@@ -1,5 +1,5 @@
-mod scanner;
 mod runner;
+mod scanner;
 
 use clap::{Parser, Subcommand};
 
@@ -7,26 +7,25 @@ use clap::{Parser, Subcommand};
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
-    #[command(subcommand)]
-    command: Commands,
+  #[command(subcommand)]
+  command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    Run { path: String },
+  Run { path: String },
 }
 
 fn main() {
-    let cli = Cli::parse();
+  let cli = Cli::parse();
 
-    
-    match cli.command {
-        Commands::Run { path } => {
-            // read file contents specified by path
+  match cli.command {
+    Commands::Run { path } => {
+      // read file contents specified by path
 
-            let contents = std::fs::read_to_string(path).expect("Something went wrong reading the file");
-            
-            runner::run(contents).expect("Something went wrong running the program");
-        }
+      let contents = std::fs::read_to_string(path).expect("Something went wrong reading the file");
+
+      runner::run(contents).expect("Something went wrong running the program");
     }
+  }
 }
