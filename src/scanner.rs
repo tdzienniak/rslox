@@ -211,10 +211,28 @@ impl Scanner {
               value.push(char);
             }
 
-            // TODO: add keywords detection
+            let token_type = match value.as_str() {
+              "if" => TokenType::If,
+              "else" => TokenType::Else,
+              "true" => TokenType::True,
+              "false" => TokenType::False,
+              "nil" => TokenType::Nil,
+              "while" => TokenType::While,
+              "for" => TokenType::For,
+              "and" => TokenType::And,
+              "or" => TokenType::Or,
+              "fun" => TokenType::Fun,
+              "return" => TokenType::Return,
+              "class" => TokenType::Class,
+              "this" => TokenType::This,
+              "super" => TokenType::Super,
+              "var" => TokenType::Var,
+              "print" => TokenType::Print,
+              _ => TokenType::Identifier,
+            };
 
             tokens.push(Token::Lexeme {
-              type_: TokenType::Identifier,
+              type_: token_type,
               lexeme: value,
               line: self.line,
             })
@@ -226,5 +244,32 @@ impl Scanner {
     tokens.push(Token::EOF);
 
     Ok(tokens)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_name() {
+    let tokens = Scanner::new("print \"Hello World!\"".to_string());
+
+    assert_eq!(
+      tokens.scan_tokens().unwrap(),
+      vec![
+        Token::Lexeme {
+          type_: TokenType::Print,
+          lexeme: "print".to_string(),
+          line: 1,
+        },
+        Token::StringLiteral {
+          lexeme: "Hello World!".to_string(),
+          line: 1,
+          value: "Hello World!".to_string(),
+        },
+        Token::EOF,
+      ]
+    );
   }
 }
