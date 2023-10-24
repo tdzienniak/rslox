@@ -1,7 +1,19 @@
+/*
+Syntax grammar:
+expression    -> equality
+equality      -> comparison (("==" | "!=") comparison)*
+comparison    -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+term          -> factor ( ( "-" | "+" ) factor )* ;
+factor        -> unary ( ( "/" | "*" ) unary )* ;
+unary         -> ( "!" | "-" ) unary | primary ;
+primary       -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
+*/
+
 use crate::scanner::{Token, TokenType};
 use anyhow::Result;
 
-enum BinaryOperator {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum BinaryOperator {
   EqualEqual,
   BangEqual,
   Plus,
@@ -14,17 +26,22 @@ enum BinaryOperator {
   LessEqual,
 }
 
-enum UnaryOperator {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum UnaryOperator {
   Minus,
   Bang,
 }
 
-enum Literal {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Literal {
   Number { value: f64 },
   String { value: String },
+  True,
+  False,
 }
 
-enum Expr {
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum Expr {
   Binary {
     operator: BinaryOperator,
     left: Box<Expr>,
@@ -51,6 +68,8 @@ macro_rules! match_token {
   };
 }
 
+
+
 pub(crate) struct Parser {
   tokens: Vec<Token>,
   current: usize,
@@ -61,8 +80,8 @@ impl Parser {
     Parser { tokens, current: 0 }
   }
 
-  pub(crate) fn parse(self) -> Result<()> {
-    Ok(())
+  pub(crate) fn parse(&mut self) -> Result<Expr> {
+    Ok(self.expression())
   }
 
   fn expression(&mut self) -> Expr {
@@ -86,37 +105,183 @@ impl Parser {
     }
 
     loop {
-      match self.tokens[self.current] {
-        Token::Lexeme {
-          type_: TokenType::EqualEqual,
-          ..
-        } => create_equality_expr!(BinaryOperator::EqualEqual),
-        Token::Lexeme {
-          type_: TokenType::BangEqual,
-          ..
-        } => create_equality_expr!(BinaryOperator::BangEqual),
+      match self.peek().kind {
+        TokenType::EqualEqual => create_equality_expr!(BinaryOperator::EqualEqual),
+        TokenType::BangEqual => create_equality_expr!(BinaryOperator::BangEqual),
         _ => break expr,
       }
     }
   }
 
   fn comparison(&mut self) -> Expr {
-    todo!()
+    let mut expr = self.term();
+
+    macro_rules! create_comparison_expr {
+      ($op:expr) => {{
+        self.advance();
+
+        let right = self.term();
+        expr = Expr::Binary {
+          operator: $op,
+          left: Box::new(expr),
+          right: Box::new(right),
+        }
+      }};
+    }
+
+    loop {
+      match self.peek().kind {
+        TokenType::Less => create_comparison_expr!(BinaryOperator::Less),
+        TokenType::LessEqual => create_comparison_expr!(BinaryOperator::LessEqual),
+        TokenType::Greater => create_comparison_expr!(BinaryOperator::Greater),
+        TokenType::GreaterEqual => create_comparison_expr!(BinaryOperator::GreaterEqual),
+        _ => break expr,
+      }
+    }
   }
 
-  fn advance(&mut self) -> Token {
-    todo!()
+  fn term(&mut self) -> Expr {
+    let mut expr = self.factor();
+
+    macro_rules! create_term_expr {
+      ($op:expr) => {{
+        self.advance();
+
+        let right = self.factor();
+        expr = Expr::Binary {
+          operator: $op,
+          left: Box::new(expr),
+          right: Box::new(right),
+        }
+      }};
+    }
+
+    loop {
+      match self.peek().kind {
+        TokenType::Plus => create_term_expr!(BinaryOperator::Plus),
+        TokenType::Minus => create_term_expr!(BinaryOperator::Minus),
+        _ => break expr,
+      }
+    }
   }
 
-  fn peek() -> Token {
-    todo!()
+  fn factor(&mut self) -> Expr {
+    let mut expr = self.unary();
+
+    macro_rules! create_factor_expr {
+      ($op:expr) => {{
+        self.advance();
+
+        let right = self.unary();
+        expr = Expr::Binary {
+          operator: $op,
+          left: Box::new(expr),
+          right: Box::new(right),
+        }
+      }};
+    }
+
+    loop {
+      match self.peek().kind {
+        TokenType::Star => create_factor_expr!(BinaryOperator::Star),
+        TokenType::Slash => create_factor_expr!(BinaryOperator::Slash),
+        _ => break expr,
+      }
+    }
   }
 
-  fn previous() -> Token {
-    todo!()
+  fn unary(&mut self) -> Expr {
+    macro_rules! create_unary_expr {
+      ($op:expr) => {{
+        self.advance();
+
+        let expr = self.unary();
+        Expr::Unary {
+          operator: $op,
+          expr: Box::new(expr)
+        }
+      }};
+    }
+
+    match self.peek().kind {
+      TokenType::Bang => create_unary_expr!(UnaryOperator::Bang),
+      TokenType::Minus => create_unary_expr!(UnaryOperator::Minus),
+      _ => {
+        self.primary()
+      }
+    }
   }
 
-  fn isAtEnd() -> bool {
-    todo!()
+  fn primary(&mut self) -> Expr {
+    macro_rules! create_primary_expr {
+      ($value:expr) => {{
+        self.advance();
+
+        Expr::Literal {
+          value: $value,
+        }
+      }};
+    }
+
+    match self.peek().kind.clone() {
+      TokenType::Number(value) => create_primary_expr!(Literal::Number { value }),
+      TokenType::String(value) => create_primary_expr!(Literal::String { value }),
+      TokenType::True => create_primary_expr!(Literal::True),
+      TokenType::False => create_primary_expr!(Literal::False),
+      TokenType::LeftParen => {
+        self.advance();
+
+        let expr = self.expression();
+
+        if self.peek().kind == TokenType::RightParen {
+          self.advance();
+
+          Expr::Grouping { expr: Box::new(expr) }
+        } else {
+          panic!("wrong")
+        }
+      }
+      _ => {
+        panic!("wrong")
+      }
+    }
+  }
+
+  fn advance(&mut self) -> &Token {
+    if !self.is_at_and() {
+      self.current += 1;
+    }
+
+    self.previous()
+  }
+
+  fn peek(&self) -> &Token {
+    &self.tokens[self.current]
+  }
+
+  fn previous(&mut self) -> &Token {
+    &self.tokens[self.current - 1]
+  }
+
+  fn is_at_and(&self) -> bool {
+    self.peek().kind == TokenType::Eof
+  }
+}
+
+
+#[cfg(test)]
+mod tests {
+  use crate::scanner::Scanner;
+
+use super::*;
+
+  #[test]
+  fn test_name() {
+      let scaner = Scanner::new("(1 + 2) * 2".to_string());
+      let mut parser = Parser::new(scaner.scan_tokens().unwrap());
+
+      let ast = parser.parse().unwrap();
+
+      println!("{:?}", ast)
   }
 }

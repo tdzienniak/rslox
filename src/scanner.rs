@@ -26,7 +26,9 @@ pub(crate) enum TokenType {
   LessEqual,
 
   // Literals
-  Identifier,
+  Identifier(String),
+  Number(f64),
+  String(String),
 
   // Keywords
   And,
@@ -45,26 +47,15 @@ pub(crate) enum TokenType {
   True,
   Var,
   While,
+
+  // Other
+  Eof
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum Token {
-  NumberLiteral {
-    lexeme: String,
-    line: u32,
-    value: f64,
-  },
-  StringLiteral {
-    lexeme: String,
-    line: u32,
-    value: String,
-  },
-  Lexeme {
-    type_: TokenType,
-    lexeme: String,
-    line: u32,
-  },
-  EOF,
+pub(crate) struct Token {
+  pub(crate) kind: TokenType,
+  pub(crate)line: u32
 }
 
 pub(crate) struct Scanner {
@@ -72,6 +63,7 @@ pub(crate) struct Scanner {
   start: usize,
   current: usize,
   line: u32,
+  tokens: Vec<Token>
 }
 
 impl Scanner {
@@ -81,34 +73,35 @@ impl Scanner {
       start: 0,
       current: 0,
       line: 1,
+      tokens: vec![]
     }
   }
 
-  fn add_lexeme(&self, type_: TokenType, lexeme: String) -> Token {
-    Token::Lexeme {
-      type_,
-      lexeme,
+  fn add_token(&mut self, kind: TokenType) {
+    self.tokens.push(Token {
+      kind,
       line: self.line,
-    }
+    });
   }
 
   pub(crate) fn scan_tokens(mut self) -> Result<Vec<Token>> {
     let mut tokens: Vec<Token> = vec![];
 
-    let mut char_iter = self.source.chars().peekable();
+    let cloned_source = self.source.clone();
+    let mut char_iter = cloned_source.chars().peekable();
 
     while let Some(char) = char_iter.next() {
       match char {
-        '(' => tokens.push(self.add_lexeme(TokenType::LeftParen, char.to_string())),
-        ')' => tokens.push(self.add_lexeme(TokenType::RightParen, char.to_string())),
-        '{' => tokens.push(self.add_lexeme(TokenType::LeftBrace, char.to_string())),
-        '}' => tokens.push(self.add_lexeme(TokenType::RightBrace, char.to_string())),
-        ',' => tokens.push(self.add_lexeme(TokenType::Comma, char.to_string())),
-        '.' => tokens.push(self.add_lexeme(TokenType::Dot, char.to_string())),
-        '-' => tokens.push(self.add_lexeme(TokenType::Minus, char.to_string())),
-        '+' => tokens.push(self.add_lexeme(TokenType::Plus, char.to_string())),
-        ';' => tokens.push(self.add_lexeme(TokenType::Semicolon, char.to_string())),
-        '*' => tokens.push(self.add_lexeme(TokenType::Star, char.to_string())),
+        '(' => self.add_token(TokenType::LeftParen),
+        ')' => self.add_token(TokenType::RightParen),
+        '{' => self.add_token(TokenType::LeftBrace),
+        '}' => self.add_token(TokenType::RightBrace),
+        ',' => self.add_token(TokenType::Comma),
+        '.' => self.add_token(TokenType::Dot),
+        '-' => self.add_token(TokenType::Minus),
+        '+' => self.add_token(TokenType::Plus),
+        ';' => self.add_token(TokenType::Semicolon),
+        '*' => self.add_token(TokenType::Star),
         '!' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
             char_iter.next();
@@ -117,7 +110,7 @@ impl Scanner {
             TokenType::Bang
           };
 
-          tokens.push(self.add_lexeme(type_, char.to_string()));
+          self.add_token(type_);
         }
         '=' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
@@ -127,7 +120,7 @@ impl Scanner {
             TokenType::Eqal
           };
 
-          tokens.push(self.add_lexeme(type_, char.to_string()));
+          self.add_token(type_);
         }
         '<' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
@@ -137,7 +130,7 @@ impl Scanner {
             TokenType::Less
           };
 
-          tokens.push(self.add_lexeme(type_, char.to_string()));
+          self.add_token(type_);
         }
         '>' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
@@ -147,13 +140,13 @@ impl Scanner {
             TokenType::Greater
           };
 
-          tokens.push(self.add_lexeme(type_, char.to_string()));
+          self.add_token(type_);
         }
         '/' => {
           if char_iter.peek().is_some_and(|c| *c == '/') {
             while char_iter.next_if(|char| *char != '\n').is_some() {}
           } else {
-            tokens.push(self.add_lexeme(TokenType::Slash, char.to_string()));
+            self.add_token(TokenType::Slash);
           }
         }
         ' ' | '\r' | '\t' => {}
@@ -168,11 +161,7 @@ impl Scanner {
           // consume the closing "
           char_iter.next();
 
-          tokens.push(Token::StringLiteral {
-            lexeme: value.clone(),
-            line: self.line,
-            value,
-          });
+          self.add_token(TokenType::String(value));
         }
         _ => {
           if char.is_ascii_digit() {
@@ -197,13 +186,7 @@ impl Scanner {
               }
             }
 
-            let literal = value.parse::<f64>()?;
-
-            tokens.push(Token::NumberLiteral {
-              lexeme: value,
-              line: self.line,
-              value: literal,
-            })
+            self.add_token(TokenType::Number(value.parse::<f64>()?));
           } else if char.is_alphabetic() {
             let mut value = String::from(char);
 
@@ -228,22 +211,18 @@ impl Scanner {
               "super" => TokenType::Super,
               "var" => TokenType::Var,
               "print" => TokenType::Print,
-              _ => TokenType::Identifier,
+              _ => TokenType::Identifier(value),
             };
-
-            tokens.push(Token::Lexeme {
-              type_: token_type,
-              lexeme: value,
-              line: self.line,
-            })
+            
+            self.add_token(token_type);
           }
         }
       }
     }
 
-    tokens.push(Token::EOF);
+    self.add_token(TokenType::Eof);
 
-    Ok(tokens)
+    Ok(self.tokens)
   }
 }
 
@@ -258,17 +237,18 @@ mod tests {
     assert_eq!(
       tokens.scan_tokens().unwrap(),
       vec![
-        Token::Lexeme {
-          type_: TokenType::Print,
-          lexeme: "print".to_string(),
+        Token {
+          kind: TokenType::Print,
           line: 1,
         },
-        Token::StringLiteral {
-          lexeme: "Hello World!".to_string(),
+        Token {
+          kind: TokenType::String("Hello World!".to_string()),
           line: 1,
-          value: "Hello World!".to_string(),
         },
-        Token::EOF,
+        Token {
+          kind: TokenType::Eof,
+          line: 1
+        },
       ]
     );
   }
