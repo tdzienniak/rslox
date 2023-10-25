@@ -1,6 +1,8 @@
-/*
+/*t
 Syntax grammar:
-expression    -> equality
+expression    -> ternary
+ternary       -> comma ("?" comma ":" ternary)?
+comma         -> equality ("," equality)*
 equality      -> comparison (("==" | "!=") comparison)*
 comparison    -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 term          -> factor ( ( "-" | "+" ) factor )* ;
@@ -24,6 +26,7 @@ pub(crate) enum BinaryOperator {
   GreaterEqual,
   Less,
   LessEqual,
+  Comma,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +45,11 @@ pub(crate) enum Literal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Expr {
+  Ternary {
+    conditional: Box<Expr>,
+    true_case: Box<Expr>,
+    false_case: Box<Expr>,
+  },
   Binary {
     operator: BinaryOperator,
     left: Box<Expr>,
@@ -59,17 +67,6 @@ pub(crate) enum Expr {
   },
 }
 
-macro_rules! match_token {
-  ($self:ident, $( $i:pat_param ),*) => {
-    match $self.tokens[$self.current] {
-      $($i)|* => { Some($self.advance()) },
-      _ => None
-    }
-  };
-}
-
-
-
 pub(crate) struct Parser {
   tokens: Vec<Token>,
   current: usize,
@@ -85,7 +82,55 @@ impl Parser {
   }
 
   fn expression(&mut self) -> Expr {
-    self.equality()
+    self.ternary()
+  }
+
+  fn ternary(&mut self) -> Expr {
+    let conditional = self.comma();
+
+    if self.peek().kind == TokenType::Question {
+      self.advance();
+      let true_case = self.comma();
+
+      if self.peek().kind == TokenType::Colon {
+        self.advance();
+        let false_case = self.ternary();
+
+        Expr::Ternary {
+          conditional: Box::new(conditional),
+          true_case: Box::new(true_case),
+          false_case: Box::new(false_case),
+        }
+      } else {
+        panic!("colon expected");
+      }
+    } else {
+      conditional
+    }
+  }
+
+  fn comma(&mut self) -> Expr {
+    let mut expr = self.equality();
+
+    macro_rules! create_comma_expr {
+      ($op:expr) => {{
+        self.advance();
+
+        let right = self.equality();
+        expr = Expr::Binary {
+          operator: $op,
+          left: Box::new(expr),
+          right: Box::new(right),
+        }
+      }};
+    }
+
+    loop {
+      match self.peek().kind {
+        TokenType::Comma => create_comma_expr!(BinaryOperator::Comma),
+        _ => break expr,
+      }
+    }
   }
 
   fn equality(&mut self) -> Expr {
@@ -198,7 +243,7 @@ impl Parser {
         let expr = self.unary();
         Expr::Unary {
           operator: $op,
-          expr: Box::new(expr)
+          expr: Box::new(expr),
         }
       }};
     }
@@ -206,9 +251,7 @@ impl Parser {
     match self.peek().kind {
       TokenType::Bang => create_unary_expr!(UnaryOperator::Bang),
       TokenType::Minus => create_unary_expr!(UnaryOperator::Minus),
-      _ => {
-        self.primary()
-      }
+      _ => self.primary(),
     }
   }
 
@@ -217,9 +260,7 @@ impl Parser {
       ($value:expr) => {{
         self.advance();
 
-        Expr::Literal {
-          value: $value,
-        }
+        Expr::Literal { value: $value }
       }};
     }
 
@@ -236,7 +277,9 @@ impl Parser {
         if self.peek().kind == TokenType::RightParen {
           self.advance();
 
-          Expr::Grouping { expr: Box::new(expr) }
+          Expr::Grouping {
+            expr: Box::new(expr),
+          }
         } else {
           panic!("wrong")
         }
@@ -268,20 +311,19 @@ impl Parser {
   }
 }
 
-
 #[cfg(test)]
 mod tests {
   use crate::scanner::Scanner;
 
-use super::*;
+  use super::*;
 
   #[test]
   fn test_name() {
-      let scaner = Scanner::new("(1 + 2) * 2".to_string());
-      let mut parser = Parser::new(scaner.scan_tokens().unwrap());
+    let scaner = Scanner::new("((1 + 2) * 2, 1 == 2 ? 6 : 7) ? 1 : 2 ? 3 : 4".to_string());
+    let mut parser = Parser::new(scaner.scan_tokens().unwrap());
 
-      let ast = parser.parse().unwrap();
+    let ast = parser.parse().unwrap();
 
-      println!("{:?}", ast)
+    println!("{:?}", ast)
   }
 }

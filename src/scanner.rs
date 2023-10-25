@@ -14,6 +14,8 @@ pub(crate) enum TokenType {
   Semicolon,
   Slash,
   Star,
+  Colon,
+  Question,
 
   // One or two character tokens
   Bang,
@@ -49,21 +51,19 @@ pub(crate) enum TokenType {
   While,
 
   // Other
-  Eof
+  Eof,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Token {
   pub(crate) kind: TokenType,
-  pub(crate)line: u32
+  pub(crate) line: u32,
 }
 
 pub(crate) struct Scanner {
   source: String,
-  start: usize,
-  current: usize,
   line: u32,
-  tokens: Vec<Token>
+  tokens: Vec<Token>,
 }
 
 impl Scanner {
@@ -73,7 +73,7 @@ impl Scanner {
       start: 0,
       current: 0,
       line: 1,
-      tokens: vec![]
+      tokens: vec![],
     }
   }
 
@@ -85,8 +85,6 @@ impl Scanner {
   }
 
   pub(crate) fn scan_tokens(mut self) -> Result<Vec<Token>> {
-    let mut tokens: Vec<Token> = vec![];
-
     let cloned_source = self.source.clone();
     let mut char_iter = cloned_source.chars().peekable();
 
@@ -102,6 +100,8 @@ impl Scanner {
         '+' => self.add_token(TokenType::Plus),
         ';' => self.add_token(TokenType::Semicolon),
         '*' => self.add_token(TokenType::Star),
+        '?' => self.add_token(TokenType::Question),
+        ':' => self.add_token(TokenType::Colon),
         '!' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
             char_iter.next();
@@ -213,7 +213,7 @@ impl Scanner {
               "print" => TokenType::Print,
               _ => TokenType::Identifier(value),
             };
-            
+
             self.add_token(token_type);
           }
         }
