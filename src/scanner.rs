@@ -70,8 +70,6 @@ impl Scanner {
   pub(crate) fn new(source: String) -> Scanner {
     Scanner {
       source,
-      start: 0,
-      current: 0,
       line: 1,
       tokens: vec![],
     }

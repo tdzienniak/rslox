@@ -1,3 +1,4 @@
+mod ast_printer;
 mod parser;
 mod runner;
 mod scanner;
