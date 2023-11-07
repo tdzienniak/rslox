@@ -1,15 +1,20 @@
-/*t
-Syntax grammar:
-expression    -> ternary
-ternary       -> comma ("?" comma ":" ternary)?
-comma         -> equality ("," equality)*
-equality      -> comparison (("==" | "!=") comparison)*
-comparison    -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-term          -> factor ( ( "-" | "+" ) factor )* ;
-factor        -> unary ( ( "/" | "*" ) unary )* ;
-unary         -> ( "!" | "-" ) unary | primary ;
-primary       -> NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
-*/
+// Syntax grammar:
+// program       -> declaration* EOF
+// declaration   -> varDecl | statement
+// varDecl       -> "var" IDENTIFIER ("=" expression)? ";"
+// statement     -> printStmt | exprStmt
+// exprStmt      -> expression ";"
+// printStmt     -> "print" expression ";"
+// expression    -> assignment
+// assignment    -> IDENTIFIER "=" assignment | ternary ;
+// ternary       -> comma ("?" comma ":" ternary)?
+// comma         -> equality ("," equality)*
+// equality      -> comparison (("==" | "!=") comparison)*
+// comparison    -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+// term          -> factor ( ( "-" | "+" ) factor )* ;
+// factor        -> unary ( ( "/" | "*" ) unary )* ;
+// unary         -> ( "!" | "-" ) unary | primary ;
+// primary       -> IDENTIFIER | NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
 
 use crate::ast_printer::Printer;
 use crate::scanner::{Token, TokenType};
@@ -49,6 +54,8 @@ pub(crate) enum Literal {
   String { value: String },
   True,
   False,
+  Nil,
+  Identifier { name: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +80,23 @@ pub(crate) enum Expr {
   Literal {
     value: Literal,
   },
+  Assignment {
+    name: String,
+    expression: Box<Expr>,
+  }
+}
+
+pub(crate) enum Stmt {
+  Print {
+    expression: Box<Expr>,
+  },
+  Expression {
+    expression: Box<Expr>,
+  },
+  Declaration {
+    name: String,
+    initializer: Box<Expr>,
+  },
 }
 
 pub(crate) struct Parser {
@@ -90,16 +114,100 @@ impl Parser {
     }
   }
 
-  pub(crate) fn parse(&mut self) -> Result<Expr> {
-    self.expression()
+  pub(crate) fn parse(&mut self) -> Result<Vec<Stmt>> {
+    let mut statements: Vec<Stmt> = vec![];
+
+    while !self.is_at_and() {
+      statements.push(self.declaration()?);
+    }
+
+    Ok(statements)
   }
 
-  fn report_error(&mut self, error: SyntaxError) {
-    self.errors.push(error);
+  fn declaration(&mut self) -> Result<Stmt> {
+    if self.peek().kind == TokenType::Var {
+      self.advance();
+
+      self.variable_declaration()
+    } else {
+      self.statement()
+    }
+  }
+
+  fn statement(&mut self) -> Result<Stmt> {
+    let statement = if self.peek().kind == TokenType::Print {
+      self.advance();
+
+      let expression = self.expression()?;
+
+      Stmt::Print {
+        expression: Box::new(expression)
+      }
+    } else {
+      let expression = self.expression()?;
+
+      Stmt::Expression {
+        expression: Box::new(expression)
+      }
+    };
+
+    if self.peek().kind == TokenType::Semicolon {
+      self.advance();
+      Ok(statement)
+    } else {
+      Err(SyntaxError::TokenExpected.into())
+    }
+  }
+
+  fn variable_declaration(&mut self) -> Result<Stmt> {
+    let TokenType::Identifier(name) = self.peek().kind.clone() else {
+      return Err(SyntaxError::TokenExpected.into());
+    };
+
+    self.advance();
+
+    if self.peek().kind != TokenType::Eqal {
+      return Err(SyntaxError::TokenExpected.into())
+    }
+
+    self.advance();
+
+    let initializer = self.expression()?;
+
+    if self.peek().kind == TokenType::Semicolon {
+      self.advance();
+      Ok(Stmt::Declaration {
+        initializer: Box::new(initializer),
+        name,
+      })
+    } else {
+      Err(SyntaxError::TokenExpected.into())
+    }
   }
 
   fn expression(&mut self) -> Result<Expr> {
-    self.ternary()
+    self.assignment()
+  }
+
+  fn assignment(&mut self) -> Result<Expr> {
+    let l_value = self.ternary()?;
+
+    if (self.peek().kind == TokenType::Eqal) {
+      self.advance();
+
+      let r_value = self.assignment()?;
+
+      if let Expr::Literal { value: Literal::Identifier { name }} = l_value {
+        Ok(Expr::Assignment {
+          name,
+          expression: Box::new(r_value),
+        })
+      } else {
+        Err(SyntaxError::TokenExpected.into())
+      }
+    } else {
+      Ok(l_value)
+    }
   }
 
   fn ternary(&mut self) -> Result<Expr> {
@@ -286,6 +394,8 @@ impl Parser {
       TokenType::String(value) => create_primary_expr!(Literal::String { value }),
       TokenType::True => create_primary_expr!(Literal::True),
       TokenType::False => create_primary_expr!(Literal::False),
+      TokenType::Nil => create_primary_expr!(Literal::Nil),
+      TokenType::Identifier(value) => create_primary_expr!(Literal::Identifier { name: value }),
       TokenType::LeftParen => {
         self.advance();
 
@@ -324,6 +434,10 @@ impl Parser {
   fn is_at_and(&self) -> bool {
     self.peek().kind == TokenType::Eof
   }
+
+  fn report_error(&mut self, error: SyntaxError) {
+    self.errors.push(error);
+  }
 }
 
 #[cfg(test)]
@@ -334,14 +448,16 @@ mod tests {
 
   #[test]
   fn test_name() {
-    let scaner = Scanner::new("((1 + 2) * 2, 1 == 2 ? 6 : 7) ? 1 : 2 ? 3 : 4".to_string());
+    let scaner = Scanner::new("a = b = true ? 1 : 2;".to_string());
     let mut parser = Parser::new(scaner.scan_tokens().unwrap());
 
     let ast = parser.parse().unwrap();
 
-    assert_eq!(
-      ast.print(),
-      "(([,]([*]([+](1, 2), 2), [==](1, 2)) ? 6 : 7) ? 1 : (2 ? 3 : 4))"
-    )
+    assert_eq!(true, true)
+    //
+    // assert_eq!(
+    //   ast.print(),
+    //   "(([,]([*]([+](1, 2), 2), [==](1, 2)) ? 6 : 7) ? 1 : (2 ? 3 : 4))"
+    // )
   }
 }

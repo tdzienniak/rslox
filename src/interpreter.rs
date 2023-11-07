@@ -23,6 +23,7 @@ pub(crate) enum Value {
   Number(NumberValue),
   String(StringValue),
   Bool(BoolValue),
+  Nil,
 }
 
 impl Value {
@@ -31,6 +32,7 @@ impl Value {
       Value::Bool(_) => "bool".to_string(),
       Value::Number(_) => "number".to_string(),
       Value::String(_) => "string".to_string(),
+      Value::Nil => "nil".to_string(),
     }
   }
 
@@ -157,7 +159,12 @@ impl Interpret for Expr {
         Literal::False => Value::Bool(BoolValue(false)),
         Literal::Number { value } => Value::Number(NumberValue(*value)),
         Literal::String { value } => Value::String(StringValue(value.clone())),
+        Literal::Nil => Value::Nil,
+        Literal::Identifier { .. } => todo!("implement environments")
       }),
+      Expr::Assignment { name, expression} => {
+        todo!("implement assignment")
+      }
     }
   }
 }

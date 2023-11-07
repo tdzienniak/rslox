@@ -9,10 +9,10 @@ pub fn run(source: String) -> Result<()> {
   let mut parser = Parser::new(tokens);
 
   let tree = parser.parse()?;
-
-  let value = tree.interpret()?;
-
-  println!("{:?}", value);
+  //
+  // let value = tree.interpret()?;
+  //
+  // println!("{:?}", value);
 
   Ok(())
 }

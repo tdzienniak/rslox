@@ -1,3 +1,4 @@
+use std::fmt::format;
 use crate::parser::{BinaryOperator, Expr, Literal, UnaryOperator};
 
 pub(crate) trait Printer {
@@ -54,7 +55,10 @@ impl Printer for Expr {
         Literal::False => "false".to_string(),
         Literal::Number { value } => format!("{}", value),
         Literal::String { value } => format!("\"{}\"", value),
+        Literal::Identifier { name } => format!("{}", name),
+        Literal::Nil => "nil".to_string()
       },
+      Expr::Assignment { .. } => "toto".to_string()
     }
   }
 }
