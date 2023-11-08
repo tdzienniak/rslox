@@ -1,12 +1,17 @@
-use crate::parser::{BinaryOperator, Expr, Literal, UnaryOperator};
+use std::rc::Rc;
+use crate::environment::Environment;
+use crate::parser::{BinaryOperator, Expr, Literal, Stmt, UnaryOperator};
 use anyhow::{anyhow, Result};
 
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub(crate) enum RuntimeError {
-  #[error("expected type")]
+  #[error("expected type {expected:?} given {given:?}")]
   TypeError { expected: String, given: String },
+
+  #[error("undefined: {name:?}")]
+  UndefinedIdentifier { name: String },
 }
 
 #[derive(Debug)]
@@ -67,19 +72,19 @@ impl Value {
   }
 }
 
-pub(crate) trait Interpret {
-  fn interpret(&self) -> Result<Value>;
+pub(crate) trait Interpret<T> {
+  fn interpret(&self, environment: &mut Environment) -> Result<T>;
 }
 
-impl Interpret for Expr {
-  fn interpret(&self) -> Result<Value> {
+impl Interpret<Rc<Value>> for Expr {
+  fn interpret(&self, environment: &mut Environment) -> Result<Rc<Value>> {
     match self {
       Expr::Unary { operator, expr } => {
-        let value = expr.interpret()?;
+        let value = expr.interpret(environment)?;
         match operator {
           UnaryOperator::Bang => {
-            if let Value::Bool(inner) = value {
-              Ok(Value::Bool(BoolValue(!inner.0)))
+            if let Value::Bool(inner) = value.as_ref() {
+              Ok(Rc::new(Value::Bool(BoolValue(!inner.0))))
             } else {
               Err(
                 RuntimeError::TypeError {
@@ -91,8 +96,8 @@ impl Interpret for Expr {
             }
           }
           UnaryOperator::Minus => {
-            if let Value::Number(inner) = value {
-              Ok(Value::Number(NumberValue(-inner.0)))
+            if let Value::Number(inner) = value .as_ref(){
+              Ok(Rc::new(Value::Number(NumberValue(-inner.0))))
             } else {
               Err(
                 RuntimeError::TypeError {
@@ -110,31 +115,31 @@ impl Interpret for Expr {
         left,
         right,
       } => {
-        let left_value = left.interpret()?;
-        let right_value = right.interpret()?;
+        let left_value = left.interpret(environment)?;
+        let right_value = right.interpret(environment)?;
 
         match operator {
           BinaryOperator::BangEqual => {
-            Ok(Value::Bool(BoolValue(!left_value.is_equal(&right_value)?)))
+            Ok(Rc::new(Value::Bool(BoolValue(!left_value.is_equal(&right_value)?))))
           }
           BinaryOperator::Comma => Ok(right_value),
           BinaryOperator::EqualEqual => {
-            Ok(Value::Bool(BoolValue(left_value.is_equal(&right_value)?)))
+            Ok(Rc::new(Value::Bool(BoolValue(left_value.is_equal(&right_value)?))))
           }
-          BinaryOperator::Plus => match (&left_value, &right_value) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Value::Number(NumberValue(v1.0 + v2.0))),
+          BinaryOperator::Plus => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 + v2.0)))),
             _ => Err(anyhow!("todo")),
           },
-          BinaryOperator::Minus => match (&left_value, &right_value) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Value::Number(NumberValue(v1.0 - v2.0))),
+          BinaryOperator::Minus => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 - v2.0)))),
             _ => Err(anyhow!("todo")),
           },
-          BinaryOperator::Star => match (&left_value, &right_value) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Value::Number(NumberValue(v1.0 * v2.0))),
+          BinaryOperator::Star => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 * v2.0)))),
             _ => Err(anyhow!("todo")),
           },
-          BinaryOperator::Slash => match (&left_value, &right_value) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Value::Number(NumberValue(v1.0 + v2.0))),
+          BinaryOperator::Slash => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 + v2.0)))),
             _ => Err(anyhow!("todo")),
           },
           _ => Err(anyhow!("todo")),
@@ -145,25 +150,63 @@ impl Interpret for Expr {
         true_case,
         false_case,
       } => {
-        let conditional_value = conditional.interpret()?;
+        let conditional_value = conditional.interpret(environment)?;
 
         if conditional_value.is_truthy() {
-          true_case.interpret()
+          true_case.interpret(environment)
         } else {
-          false_case.interpret()
+          false_case.interpret(environment)
         }
       }
-      Expr::Grouping { expr } => expr.interpret(),
-      Expr::Literal { value } => Ok(match value {
-        Literal::True => Value::Bool(BoolValue(true)),
-        Literal::False => Value::Bool(BoolValue(false)),
-        Literal::Number { value } => Value::Number(NumberValue(*value)),
-        Literal::String { value } => Value::String(StringValue(value.clone())),
-        Literal::Nil => Value::Nil,
-        Literal::Identifier { .. } => todo!("implement environments")
-      }),
-      Expr::Assignment { name, expression} => {
+      Expr::Grouping { expr } => expr.interpret(environment),
+      Expr::Literal { value } => match value {
+        Literal::True => Ok(Value::Bool(BoolValue(true)).into()),
+        Literal::False => Ok(Value::Bool(BoolValue(false)).into()),
+        Literal::Number { value } => Ok(Value::Number(NumberValue(*value)).into()),
+        Literal::String { value } => Ok(Value::String(StringValue(value.clone())).into()),
+        Literal::Nil => Ok(Value::Nil.into()),
+        Literal::Identifier { name } => environment.get(name).ok_or(
+          RuntimeError::UndefinedIdentifier {
+            name: name.to_string(),
+          }
+          .into(),
+        ),
+      },
+      Expr::Assignment { name, expression } => {
         todo!("implement assignment")
+      }
+    }
+  }
+}
+
+impl Interpret<()> for Stmt {
+  fn interpret(&self, environment: &mut Environment) -> Result<()> {
+    match self {
+      Stmt::Print { expression } => {
+        let value = expression.interpret(environment)?;
+
+        let value_str = match value.as_ref() {
+          Value::Number(value) => value.0.to_string(),
+          Value::String(value) => value.0.clone(),
+          Value::Bool(value) => value.0.to_string(),
+          Value::Nil => "nil".to_string()
+        };
+
+        println!("{}", value_str);
+
+        Ok(())
+      }
+      Stmt::Expression { expression } => {
+        expression.interpret(environment)?;
+
+        Ok(())
+      }
+      Stmt::Declaration { name, initializer } => {
+        let value = initializer.interpret(environment)?;
+
+        environment.define(name, value);
+
+        Ok(())
       }
     }
   }

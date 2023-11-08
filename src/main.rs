@@ -3,6 +3,7 @@ mod interpreter;
 mod parser;
 mod runner;
 mod scanner;
+mod environment;
 
 use clap::{Parser, Subcommand};
 
