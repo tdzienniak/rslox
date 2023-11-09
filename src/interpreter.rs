@@ -1,18 +1,8 @@
-use std::rc::Rc;
 use crate::environment::Environment;
+use crate::errors::RuntimeError;
 use crate::parser::{BinaryOperator, Expr, Literal, Stmt, UnaryOperator};
 use anyhow::{anyhow, Result};
-
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub(crate) enum RuntimeError {
-  #[error("expected type {expected:?} given {given:?}")]
-  TypeError { expected: String, given: String },
-
-  #[error("undefined: {name:?}")]
-  UndefinedIdentifier { name: String },
-}
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub(crate) struct NumberValue(f64);
@@ -96,7 +86,7 @@ impl Interpret<Rc<Value>> for Expr {
             }
           }
           UnaryOperator::Minus => {
-            if let Value::Number(inner) = value .as_ref(){
+            if let Value::Number(inner) = value.as_ref() {
               Ok(Rc::new(Value::Number(NumberValue(-inner.0))))
             } else {
               Err(
@@ -119,27 +109,35 @@ impl Interpret<Rc<Value>> for Expr {
         let right_value = right.interpret(environment)?;
 
         match operator {
-          BinaryOperator::BangEqual => {
-            Ok(Rc::new(Value::Bool(BoolValue(!left_value.is_equal(&right_value)?))))
-          }
+          BinaryOperator::BangEqual => Ok(Rc::new(Value::Bool(BoolValue(
+            !left_value.is_equal(&right_value)?,
+          )))),
           BinaryOperator::Comma => Ok(right_value),
-          BinaryOperator::EqualEqual => {
-            Ok(Rc::new(Value::Bool(BoolValue(left_value.is_equal(&right_value)?))))
-          }
+          BinaryOperator::EqualEqual => Ok(Rc::new(Value::Bool(BoolValue(
+            left_value.is_equal(&right_value)?,
+          )))),
           BinaryOperator::Plus => match (left_value.as_ref(), right_value.as_ref()) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 + v2.0)))),
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Number(NumberValue(v1.0 + v2.0))))
+            }
             _ => Err(anyhow!("todo")),
           },
           BinaryOperator::Minus => match (left_value.as_ref(), right_value.as_ref()) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 - v2.0)))),
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Number(NumberValue(v1.0 - v2.0))))
+            }
             _ => Err(anyhow!("todo")),
           },
           BinaryOperator::Star => match (left_value.as_ref(), right_value.as_ref()) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 * v2.0)))),
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Number(NumberValue(v1.0 * v2.0))))
+            }
             _ => Err(anyhow!("todo")),
           },
           BinaryOperator::Slash => match (left_value.as_ref(), right_value.as_ref()) {
-            (Value::Number(v1), Value::Number(v2)) => Ok(Rc::new(Value::Number(NumberValue(v1.0 + v2.0)))),
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Number(NumberValue(v1.0 + v2.0))))
+            }
             _ => Err(anyhow!("todo")),
           },
           _ => Err(anyhow!("todo")),
@@ -173,7 +171,9 @@ impl Interpret<Rc<Value>> for Expr {
         ),
       },
       Expr::Assignment { name, expression } => {
-        todo!("implement assignment")
+        let value = expression.interpret(environment)?;
+
+        environment.assign(name, value)
       }
     }
   }
@@ -189,7 +189,7 @@ impl Interpret<()> for Stmt {
           Value::Number(value) => value.0.to_string(),
           Value::String(value) => value.0.clone(),
           Value::Bool(value) => value.0.to_string(),
-          Value::Nil => "nil".to_string()
+          Value::Nil => "nil".to_string(),
         };
 
         println!("{}", value_str);

@@ -1,11 +1,13 @@
 mod ast_printer;
+mod environment;
+mod errors;
 mod interpreter;
 mod parser;
 mod runner;
 mod scanner;
-mod environment;
 
 use clap::{Parser, Subcommand};
+use std::process;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -25,11 +27,12 @@ fn main() {
 
   match cli.command {
     Commands::Run { path } => {
-      // read file contents specified by path
-
       let contents = std::fs::read_to_string(path).expect("Something went wrong reading the file");
 
-      runner::run(contents).expect("Something went wrong running the program");
+      runner::run(contents).unwrap_or_else(|e| {
+        eprintln!("Error: {e}");
+        process::exit(1);
+      })
     }
   }
 }

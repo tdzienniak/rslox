@@ -57,6 +57,7 @@ pub(crate) enum TokenType {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Token {
   pub(crate) kind: TokenType,
+  pub(crate) lexeme: String,
   pub(crate) line: u32,
 }
 
@@ -75,9 +76,10 @@ impl Scanner {
     }
   }
 
-  fn add_token(&mut self, kind: TokenType) {
+  fn add_token(&mut self, kind: TokenType, lexeme: String) {
     self.tokens.push(Token {
       kind,
+      lexeme,
       line: self.line,
     });
   }
@@ -88,18 +90,18 @@ impl Scanner {
 
     while let Some(char) = char_iter.next() {
       match char {
-        '(' => self.add_token(TokenType::LeftParen),
-        ')' => self.add_token(TokenType::RightParen),
-        '{' => self.add_token(TokenType::LeftBrace),
-        '}' => self.add_token(TokenType::RightBrace),
-        ',' => self.add_token(TokenType::Comma),
-        '.' => self.add_token(TokenType::Dot),
-        '-' => self.add_token(TokenType::Minus),
-        '+' => self.add_token(TokenType::Plus),
-        ';' => self.add_token(TokenType::Semicolon),
-        '*' => self.add_token(TokenType::Star),
-        '?' => self.add_token(TokenType::Question),
-        ':' => self.add_token(TokenType::Colon),
+        '(' => self.add_token(TokenType::LeftParen, char.to_string()),
+        ')' => self.add_token(TokenType::RightParen, char.to_string()),
+        '{' => self.add_token(TokenType::LeftBrace, char.to_string()),
+        '}' => self.add_token(TokenType::RightBrace, char.to_string()),
+        ',' => self.add_token(TokenType::Comma, char.to_string()),
+        '.' => self.add_token(TokenType::Dot, char.to_string()),
+        '-' => self.add_token(TokenType::Minus, char.to_string()),
+        '+' => self.add_token(TokenType::Plus, char.to_string()),
+        ';' => self.add_token(TokenType::Semicolon, char.to_string()),
+        '*' => self.add_token(TokenType::Star, char.to_string()),
+        '?' => self.add_token(TokenType::Question, char.to_string()),
+        ':' => self.add_token(TokenType::Colon, char.to_string()),
         '!' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
             char_iter.next();
@@ -108,7 +110,7 @@ impl Scanner {
             TokenType::Bang
           };
 
-          self.add_token(type_);
+          self.add_token(type_, char.to_string());
         }
         '=' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
@@ -118,7 +120,7 @@ impl Scanner {
             TokenType::Eqal
           };
 
-          self.add_token(type_);
+          self.add_token(type_, char.to_string());
         }
         '<' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
@@ -128,7 +130,7 @@ impl Scanner {
             TokenType::Less
           };
 
-          self.add_token(type_);
+          self.add_token(type_, char.to_string());
         }
         '>' => {
           let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
@@ -138,13 +140,13 @@ impl Scanner {
             TokenType::Greater
           };
 
-          self.add_token(type_);
+          self.add_token(type_, char.to_string());
         }
         '/' => {
           if char_iter.peek().is_some_and(|c| *c == '/') {
             while char_iter.next_if(|char| *char != '\n').is_some() {}
           } else {
-            self.add_token(TokenType::Slash);
+            self.add_token(TokenType::Slash, char.to_string());
           }
         }
         ' ' | '\r' | '\t' => {}
@@ -159,7 +161,7 @@ impl Scanner {
           // consume the closing "
           char_iter.next();
 
-          self.add_token(TokenType::String(value));
+          self.add_token(TokenType::String(value.clone()), value);
         }
         _ => {
           if char.is_ascii_digit() {
@@ -184,7 +186,7 @@ impl Scanner {
               }
             }
 
-            self.add_token(TokenType::Number(value.parse::<f64>()?));
+            self.add_token(TokenType::Number(value.parse::<f64>()?), value.clone());
           } else if char.is_alphabetic() {
             let mut value = String::from(char);
 
@@ -209,16 +211,16 @@ impl Scanner {
               "super" => TokenType::Super,
               "var" => TokenType::Var,
               "print" => TokenType::Print,
-              _ => TokenType::Identifier(value),
+              _ => TokenType::Identifier(value.clone()),
             };
 
-            self.add_token(token_type);
+            self.add_token(token_type, value);
           }
         }
       }
     }
 
-    self.add_token(TokenType::Eof);
+    self.add_token(TokenType::Eof, "".to_string());
 
     Ok(self.tokens)
   }
@@ -237,14 +239,17 @@ mod tests {
       vec![
         Token {
           kind: TokenType::Print,
+          lexeme: "print".to_string(),
           line: 1,
         },
         Token {
           kind: TokenType::String("Hello World!".to_string()),
+          lexeme: "Hello World!".to_string(),
           line: 1,
         },
         Token {
           kind: TokenType::Eof,
+          lexeme: "".to_string(),
           line: 1
         },
       ]

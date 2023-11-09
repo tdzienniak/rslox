@@ -16,16 +16,9 @@
 // unary         -> ( "!" | "-" ) unary | primary ;
 // primary       -> IDENTIFIER | NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
 
-use crate::ast_printer::Printer;
+use crate::errors::SyntaxError;
 use crate::scanner::{Token, TokenType};
-use anyhow::{Context, Result};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub(crate) enum SyntaxError {
-  #[error("token expected")]
-  TokenExpected,
-}
+use anyhow::{Result};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOperator {
@@ -83,7 +76,7 @@ pub(crate) enum Expr {
   Assignment {
     name: String,
     expression: Box<Expr>,
-  }
+  },
 }
 
 pub(crate) enum Stmt {
@@ -118,20 +111,41 @@ impl Parser {
     let mut statements: Vec<Stmt> = vec![];
 
     while !self.is_at_and() {
-      statements.push(self.declaration()?);
+      if let Some(stmt) = self.declaration()? {
+        statements.push(stmt);
+      }
     }
 
-    Ok(statements)
+    if self.errors.len() > 0 {
+      for e in &self.errors {
+        eprintln!("Syntax error: {e}");
+      }
+
+      Ok(vec![])
+    } else {
+      Ok(statements)
+    }
   }
 
-  fn declaration(&mut self) -> Result<Stmt> {
-    if self.peek().kind == TokenType::Var {
+  fn declaration(&mut self) -> Result<Option<Stmt>> {
+    let stmt = if self.peek().kind == TokenType::Var {
       self.advance();
 
       self.variable_declaration()
     } else {
       self.statement()
-    }
+    };
+
+    stmt.and_then(|stmt| Ok(Some(stmt))).or_else(|e| {
+      if let Some(syntax_error) = e.downcast_ref::<SyntaxError>() {
+        self.errors.push(syntax_error.clone());
+        self.synchronize();
+
+        Ok(None)
+      } else {
+        Err(e)
+      }
+    })
   }
 
   fn statement(&mut self) -> Result<Stmt> {
@@ -141,13 +155,13 @@ impl Parser {
       let expression = self.expression()?;
 
       Stmt::Print {
-        expression: Box::new(expression)
+        expression: Box::new(expression),
       }
     } else {
       let expression = self.expression()?;
 
       Stmt::Expression {
-        expression: Box::new(expression)
+        expression: Box::new(expression),
       }
     };
 
@@ -155,19 +169,19 @@ impl Parser {
       self.advance();
       Ok(statement)
     } else {
-      Err(SyntaxError::TokenExpected.into())
+      Err(SyntaxError::MissingSemicolon.into())
     }
   }
 
   fn variable_declaration(&mut self) -> Result<Stmt> {
     let TokenType::Identifier(name) = self.peek().kind.clone() else {
-      return Err(SyntaxError::TokenExpected.into());
+      return Err(SyntaxError::VariableDeclarationMissingIdentifier.into());
     };
 
     self.advance();
 
     if self.peek().kind != TokenType::Eqal {
-      return Err(SyntaxError::TokenExpected.into())
+      return Err(SyntaxError::VariableDeclarationMissingAssignment.into());
     }
 
     self.advance();
@@ -181,7 +195,7 @@ impl Parser {
         name,
       })
     } else {
-      Err(SyntaxError::TokenExpected.into())
+      Err(SyntaxError::MissingSemicolon.into())
     }
   }
 
@@ -197,13 +211,16 @@ impl Parser {
 
       let r_value = self.assignment()?;
 
-      if let Expr::Literal { value: Literal::Identifier { name }} = l_value {
+      if let Expr::Literal {
+        value: Literal::Identifier { name },
+      } = l_value
+      {
         Ok(Expr::Assignment {
           name,
           expression: Box::new(r_value),
         })
       } else {
-        Err(SyntaxError::TokenExpected.into())
+        Err(SyntaxError::LValueMustBeAnIdentifier.into())
       }
     } else {
       Ok(l_value)
@@ -227,7 +244,7 @@ impl Parser {
           false_case: Box::new(false_case),
         })
       } else {
-        Err(SyntaxError::TokenExpected.into())
+        Err(SyntaxError::MissingColonInTernary.into())
       }
     } else {
       Ok(conditional)
@@ -408,10 +425,10 @@ impl Parser {
             expr: Box::new(expr),
           })
         } else {
-          Err(SyntaxError::TokenExpected.into())
+          Err(SyntaxError::MissingRightParen.into())
         }
       }
-      _ => Err(SyntaxError::TokenExpected.into()),
+      _ => Err(SyntaxError::UnexpectedTokenInExpression.into()),
     }
   }
 
@@ -437,6 +454,26 @@ impl Parser {
 
   fn report_error(&mut self, error: SyntaxError) {
     self.errors.push(error);
+  }
+  fn synchronize(&mut self) {
+    self.advance();
+
+    while !self.is_at_and() {
+      if let Token {
+        kind: TokenType::Semicolon,
+        ..
+      } = self.previous()
+      {
+        return;
+      }
+
+      match self.peek().kind {
+        TokenType::Fun | TokenType::Var => return,
+        _ => {}
+      }
+
+      self.advance();
+    }
   }
 }
 

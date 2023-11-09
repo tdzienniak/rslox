@@ -1,8 +1,8 @@
+use crate::environment::Environment;
 use crate::interpreter::Interpret;
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 use anyhow::Result;
-use crate::environment::Environment;
 
 pub fn run(source: String) -> Result<()> {
   let mut scanner = Scanner::new(source);
