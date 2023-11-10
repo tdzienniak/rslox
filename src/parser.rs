@@ -116,7 +116,7 @@ impl Parser {
       }
     }
 
-    if self.errors.len() > 0 {
+    if !self.errors.is_empty() {
       for e in &self.errors {
         eprintln!("Syntax error: {e}");
       }
@@ -128,9 +128,7 @@ impl Parser {
   }
 
   fn declaration(&mut self) -> Result<Option<Stmt>> {
-    let stmt = if self.peek().kind == TokenType::Var {
-      self.advance();
-
+    let stmt = if self.match_(TokenType::Var) {
       self.variable_declaration()
     } else {
       self.statement()
@@ -149,9 +147,7 @@ impl Parser {
   }
 
   fn statement(&mut self) -> Result<Stmt> {
-    let statement = if self.peek().kind == TokenType::Print {
-      self.advance();
-
+    let statement = if self.match_(TokenType::Print) {
       let expression = self.expression()?;
 
       Stmt::Print {
@@ -165,8 +161,7 @@ impl Parser {
       }
     };
 
-    if self.peek().kind == TokenType::Semicolon {
-      self.advance();
+    if self.match_(TokenType::Semicolon) {
       Ok(statement)
     } else {
       Err(SyntaxError::MissingSemicolon.into())
@@ -180,16 +175,13 @@ impl Parser {
 
     self.advance();
 
-    if self.peek().kind != TokenType::Eqal {
+    if !self.match_(TokenType::Eqal) {
       return Err(SyntaxError::VariableDeclarationMissingAssignment.into());
     }
 
-    self.advance();
-
     let initializer = self.expression()?;
 
-    if self.peek().kind == TokenType::Semicolon {
-      self.advance();
+    if self.match_( TokenType::Semicolon) {
       Ok(Stmt::Declaration {
         initializer: Box::new(initializer),
         name,
@@ -206,22 +198,19 @@ impl Parser {
   fn assignment(&mut self) -> Result<Expr> {
     let l_value = self.ternary()?;
 
-    if (self.peek().kind == TokenType::Eqal) {
-      self.advance();
-
+    if self.match_(TokenType::Eqal) {
       let r_value = self.assignment()?;
 
-      if let Expr::Literal {
+      let Expr::Literal {
         value: Literal::Identifier { name },
-      } = l_value
-      {
-        Ok(Expr::Assignment {
-          name,
-          expression: Box::new(r_value),
-        })
-      } else {
-        Err(SyntaxError::LValueMustBeAnIdentifier.into())
-      }
+      } = l_value else {
+        return Err(SyntaxError::LValueMustBeAnIdentifier.into());
+      };
+
+      Ok(Expr::Assignment {
+        name,
+        expression: Box::new(r_value),
+      })
     } else {
       Ok(l_value)
     }
@@ -230,12 +219,10 @@ impl Parser {
   fn ternary(&mut self) -> Result<Expr> {
     let conditional = self.comma()?;
 
-    if self.peek().kind == TokenType::Question {
-      self.advance();
+    if self.match_(TokenType::Question) {
       let true_case = self.comma()?;
 
-      if self.peek().kind == TokenType::Colon {
-        self.advance();
+      if self.match_(TokenType::Colon) {
         let false_case = self.ternary()?;
 
         Ok(Expr::Ternary {
@@ -254,23 +241,15 @@ impl Parser {
   fn comma(&mut self) -> Result<Expr> {
     let mut expr = self.equality()?;
 
-    macro_rules! create_comma_expr {
-      ($op:expr) => {{
-        self.advance();
-
-        let right = self.equality()?;
-        expr = Expr::Binary {
-          operator: $op,
-          left: Box::new(expr),
-          right: Box::new(right),
-        }
-      }};
-    }
-
     loop {
-      match self.peek().kind {
-        TokenType::Comma => create_comma_expr!(BinaryOperator::Comma),
-        _ => break Ok(expr),
+      if self.match_(TokenType::Comma) {
+        expr = Expr::Binary {
+          operator: BinaryOperator::Comma,
+          left: Box::new(expr),
+          right: Box::new(self.equality()?),
+        };
+      } else {
+        break Ok(expr)
       }
     }
   }
@@ -303,98 +282,80 @@ impl Parser {
   fn comparison(&mut self) -> Result<Expr> {
     let mut expr = self.term()?;
 
-    macro_rules! create_comparison_expr {
-      ($op:expr) => {{
-        self.advance();
-
-        let right = self.term()?;
-        expr = Expr::Binary {
-          operator: $op,
-          left: Box::new(expr),
-          right: Box::new(right),
-        }
-      }};
-    }
-
     loop {
-      match self.peek().kind {
-        TokenType::Less => create_comparison_expr!(BinaryOperator::Less),
-        TokenType::LessEqual => create_comparison_expr!(BinaryOperator::LessEqual),
-        TokenType::Greater => create_comparison_expr!(BinaryOperator::Greater),
-        TokenType::GreaterEqual => create_comparison_expr!(BinaryOperator::GreaterEqual),
-        _ => break Ok(expr),
-      }
+      let operator = if self.match_(TokenType::Less) {
+        BinaryOperator::Less
+      } else if self.match_(TokenType::LessEqual) {
+        BinaryOperator::LessEqual
+      } else if self.match_(TokenType::Greater) {
+        BinaryOperator::Greater
+      } else if self.match_(TokenType::GreaterEqual) {
+        BinaryOperator::GreaterEqual
+      } else {
+        break Ok(expr);
+      };
+
+      expr = Expr::Binary {
+        operator,
+        left: Box::new(expr),
+        right: Box::new(self.term()?),
+      };
     }
   }
 
   fn term(&mut self) -> Result<Expr> {
     let mut expr = self.factor()?;
 
-    macro_rules! create_term_expr {
-      ($op:expr) => {{
-        self.advance();
-
-        let right = self.factor()?;
-        expr = Expr::Binary {
-          operator: $op,
-          left: Box::new(expr),
-          right: Box::new(right),
-        }
-      }};
-    }
-
     loop {
-      match self.peek().kind {
-        TokenType::Plus => create_term_expr!(BinaryOperator::Plus),
-        TokenType::Minus => create_term_expr!(BinaryOperator::Minus),
-        _ => break Ok(expr),
-      }
+      let operator = if self.match_(TokenType::Plus) {
+        BinaryOperator::Plus
+      } else if self.match_(TokenType::Minus) {
+        BinaryOperator::Minus
+      } else {
+        break Ok(expr);
+      };
+
+      expr = Expr::Binary {
+        operator,
+        left: Box::new(expr),
+        right: Box::new(self.factor()?),
+      };
     }
   }
 
   fn factor(&mut self) -> Result<Expr> {
     let mut expr = self.unary()?;
 
-    macro_rules! create_factor_expr {
-      ($op:expr) => {{
-        self.advance();
-
-        let right = self.unary()?;
-        expr = Expr::Binary {
-          operator: $op,
-          left: Box::new(expr),
-          right: Box::new(right),
-        }
-      }};
-    }
-
     loop {
-      match self.peek().kind {
-        TokenType::Star => create_factor_expr!(BinaryOperator::Star),
-        TokenType::Slash => create_factor_expr!(BinaryOperator::Slash),
-        _ => break Ok(expr),
-      }
+      let operator = if self.match_(TokenType::Star) {
+        BinaryOperator::Star
+      } else if self.match_(TokenType::Slash) {
+        BinaryOperator::Slash
+      } else {
+        break Ok(expr);
+      };
+
+      expr = Expr::Binary {
+        operator,
+        left: Box::new(expr),
+        right: Box::new(self.unary()?),
+      };
     }
   }
 
   fn unary(&mut self) -> Result<Expr> {
-    macro_rules! create_unary_expr {
-      ($op:expr) => {{
-        self.advance();
+    let operator = if self.match_(TokenType::Bang) {
+      UnaryOperator::Bang
+    } else if self.match_(TokenType::Minus) {
+      UnaryOperator::Minus
+    } else {
+      return self.primary();
+    };
 
-        let expr = self.unary()?;
-        Ok(Expr::Unary {
-          operator: $op,
-          expr: Box::new(expr),
-        })
-      }};
-    }
-
-    match self.peek().kind {
-      TokenType::Bang => create_unary_expr!(UnaryOperator::Bang),
-      TokenType::Minus => create_unary_expr!(UnaryOperator::Minus),
-      _ => self.primary(),
-    }
+    Ok(Expr::Unary {
+      operator,
+      expr: Box::new(self.unary()?),
+    })
   }
 
   fn primary(&mut self) -> Result<Expr> {
@@ -418,9 +379,7 @@ impl Parser {
 
         let expr = self.expression()?;
 
-        if self.peek().kind == TokenType::RightParen {
-          self.advance();
-
+        if self.match_(TokenType::RightParen) {
           Ok(Expr::Grouping {
             expr: Box::new(expr),
           })
@@ -438,6 +397,16 @@ impl Parser {
     }
 
     self.previous()
+  }
+
+  fn match_(&mut self, token_type: TokenType) -> bool {
+    if self.peek().kind == token_type {
+      self.advance();
+
+      true
+    } else {
+      false
+    }
   }
 
   fn peek(&self) -> &Token {
