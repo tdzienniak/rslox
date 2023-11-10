@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use crate::environment::Environment;
 use crate::errors::RuntimeError;
 use crate::parser::{BinaryOperator, Expr, Literal, Stmt, UnaryOperator};
@@ -63,11 +64,11 @@ impl Value {
 }
 
 pub(crate) trait Interpret<T> {
-  fn interpret(&self, environment: &mut Environment) -> Result<T>;
+  fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<T>;
 }
 
 impl Interpret<Rc<Value>> for Expr {
-  fn interpret(&self, environment: &mut Environment) -> Result<Rc<Value>> {
+  fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<Rc<Value>> {
     match self {
       Expr::Unary { operator, expr } => {
         let value = expr.interpret(environment)?;
@@ -105,8 +106,8 @@ impl Interpret<Rc<Value>> for Expr {
         left,
         right,
       } => {
-        let left_value = left.interpret(environment)?;
-        let right_value = right.interpret(environment)?;
+        let left_value = left.interpret(Rc::clone(&environment))?;
+        let right_value = right.interpret(Rc::clone(&environment))?;
 
         match operator {
           BinaryOperator::BangEqual => Ok(Rc::new(Value::Bool(BoolValue(
@@ -148,12 +149,12 @@ impl Interpret<Rc<Value>> for Expr {
         true_case,
         false_case,
       } => {
-        let conditional_value = conditional.interpret(environment)?;
+        let conditional_value = conditional.interpret(Rc::clone(&environment))?;
 
         if conditional_value.is_truthy() {
-          true_case.interpret(environment)
+          true_case.interpret(Rc::clone(&environment))
         } else {
-          false_case.interpret(environment)
+          false_case.interpret(Rc::clone(&environment))
         }
       }
       Expr::Grouping { expr } => expr.interpret(environment),
@@ -163,7 +164,7 @@ impl Interpret<Rc<Value>> for Expr {
         Literal::Number { value } => Ok(Value::Number(NumberValue(*value)).into()),
         Literal::String { value } => Ok(Value::String(StringValue(value.clone())).into()),
         Literal::Nil => Ok(Value::Nil.into()),
-        Literal::Identifier { name } => environment.get(name).ok_or(
+        Literal::Identifier { name } => environment.borrow().get(name).ok_or(
           RuntimeError::UndefinedIdentifier {
             name: name.to_string(),
           }
@@ -171,19 +172,19 @@ impl Interpret<Rc<Value>> for Expr {
         ),
       },
       Expr::Assignment { name, expression } => {
-        let value = expression.interpret(environment)?;
+        let value = expression.interpret(Rc::clone(&environment))?;
 
-        environment.assign(name, value)
+        environment.borrow_mut().assign(name, value)
       }
     }
   }
 }
 
 impl Interpret<()> for Stmt {
-  fn interpret(&self, environment: &mut Environment) -> Result<()> {
+  fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<()> {
     match self {
       Stmt::Print { expression } => {
-        let value = expression.interpret(environment)?;
+        let value = expression.interpret(Rc::clone(&environment))?;
 
         let value_str = match value.as_ref() {
           Value::Number(value) => value.0.to_string(),
@@ -196,15 +197,24 @@ impl Interpret<()> for Stmt {
 
         Ok(())
       }
+      Stmt::Block { statements} => {
+        let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(&environment)))));
+
+        for stmt in statements {
+          stmt.interpret(Rc::clone(&block_environment))?;
+        }
+
+        Ok(())
+      },
       Stmt::Expression { expression } => {
         expression.interpret(environment)?;
 
         Ok(())
       }
       Stmt::Declaration { name, initializer } => {
-        let value = initializer.interpret(environment)?;
+        let value = initializer.interpret(Rc::clone(&environment))?;
 
-        environment.define(name, value);
+        environment.borrow_mut().define(name, value);
 
         Ok(())
       }

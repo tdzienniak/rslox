@@ -2,7 +2,8 @@
 // program       -> declaration* EOF
 // declaration   -> varDecl | statement
 // varDecl       -> "var" IDENTIFIER ("=" expression)? ";"
-// statement     -> printStmt | exprStmt
+// statement     -> printStmt | exprStmt | block
+// block         -> "{" declaration* "}"
 // exprStmt      -> expression ";"
 // printStmt     -> "print" expression ";"
 // expression    -> assignment
@@ -90,6 +91,7 @@ pub(crate) enum Stmt {
     name: String,
     initializer: Box<Expr>,
   },
+  Block { statements: Vec<Stmt> },
 }
 
 pub(crate) struct Parser {
@@ -134,7 +136,7 @@ impl Parser {
       self.statement()
     };
 
-    stmt.and_then(|stmt| Ok(Some(stmt))).or_else(|e| {
+    stmt.map(Some).or_else(|e| {
       if let Some(syntax_error) = e.downcast_ref::<SyntaxError>() {
         self.errors.push(syntax_error.clone());
         self.synchronize();
@@ -147,22 +149,54 @@ impl Parser {
   }
 
   fn statement(&mut self) -> Result<Stmt> {
-    let statement = if self.match_(TokenType::Print) {
-      let expression = self.expression()?;
+    if self.match_(TokenType::Print) {
+      self.print_stmt()
+    } else if self.match_(TokenType::LeftBrace) {
+      let statements = self.block()?;
 
-      Stmt::Print {
-        expression: Box::new(expression),
-      }
+      Ok(Stmt::Block {
+        statements,
+      })
     } else {
-      let expression = self.expression()?;
+      self.expr_stmt()
+    }
+  }
 
-      Stmt::Expression {
-        expression: Box::new(expression),
-      }
-    };
+  fn print_stmt(&mut self) -> Result<Stmt> {
+    let expression = self.expression()?;
 
     if self.match_(TokenType::Semicolon) {
-      Ok(statement)
+      Ok(Stmt::Print {
+        expression: Box::new(expression),
+      })
+    } else {
+      Err(SyntaxError::MissingSemicolon.into())
+    }
+  }
+
+  fn block(&mut self) -> Result<Vec<Stmt>> {
+    let mut statements: Vec<Stmt> = vec![];
+
+    while self.peek().kind != TokenType::RightBrace && !self.is_at_and() {
+      if let Some(stmt) = self.declaration()? {
+        statements.push(stmt);
+      }
+    }
+
+    if self.match_(TokenType::RightBrace) {
+      Ok(statements)
+    } else {
+      Err(SyntaxError::MissingRightBrace.into())
+    }
+  }
+
+  fn expr_stmt(&mut self) -> Result<Stmt> {
+    let expression = self.expression()?;
+
+    if self.match_(TokenType::Semicolon) {
+      Ok(Stmt::Expression {
+        expression: Box::new(expression),
+      })
     } else {
       Err(SyntaxError::MissingSemicolon.into())
     }

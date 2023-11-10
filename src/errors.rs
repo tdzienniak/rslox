@@ -32,6 +32,9 @@ pub(crate) enum SyntaxError {
   #[error("closing paren ')' was not found")]
   MissingRightParen,
 
-  #[error("unexpected token encountered when parsing expression")]
+  #[error("unexpected token encountered when parsing an expression")]
   UnexpectedTokenInExpression,
+
+  #[error("expected closing '}}' after a block")]
+  MissingRightBrace,
 }
