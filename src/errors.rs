@@ -39,8 +39,17 @@ pub(crate) enum SyntaxError {
   MissingRightBrace,
 
   #[error("'while' condition must be enclosed in parens")]
-  MissingWhileCoditionLeftBrace,
+  MissingWhileConditionLeftParen,
 
   #[error("'while' body must be enclosed in block")]
   WhileBodyNotEnclosedInBlock,
+
+  #[error("'if' condition must be enclosed in parens")]
+  MissingIfConditionLeftParen,
+
+  #[error("'if' body must be enclosed in block")]
+  IfBodyNotEnclosedInBlock,
+
+  #[error("'else' body must be enclosed in block")]
+  ElseBodyNotEnclosedInBlock,
 }

@@ -248,6 +248,15 @@ impl Interpret<()> for Stmt {
         }
 
         Ok(())
+      },
+      Stmt::If {condition, true_case, false_case} => {
+        if condition.interpret(Rc::clone(&environment))?.is_truthy() {
+          true_case.interpret(Rc::clone(&environment))?;
+        } else if let Some(statement) = false_case {
+          statement.interpret(Rc::clone(&environment))?;
+        }
+
+        Ok(())
       }
     }
   }

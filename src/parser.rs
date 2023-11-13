@@ -2,8 +2,9 @@
 // program       -> declaration* EOF
 // declaration   -> varDecl | statement
 // varDecl       -> "var" IDENTIFIER ("=" expression)? ";"
-// statement     -> printStmt | exprStmt | block
+// statement     -> printStmt | exprStmt | block | while | if
 // while         -> "while" "(" expression ")" block
+// if            -> "if" "(" expression ")" block ("else" block)?
 // block         -> "{" declaration* "}"
 // exprStmt      -> expression ";"
 // printStmt     -> "print" expression ";"
@@ -20,7 +21,7 @@
 
 use crate::errors::SyntaxError;
 use crate::scanner::{Token, TokenType};
-use anyhow::{Result};
+use anyhow::Result;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOperator {
@@ -92,11 +93,18 @@ pub(crate) enum Stmt {
     name: String,
     initializer: Box<Expr>,
   },
-  Block { statements: Vec<Stmt> },
+  Block {
+    statements: Vec<Stmt>,
+  },
   While {
     condition: Box<Expr>,
-    statement: Box<Stmt>
-  }
+    statement: Box<Stmt>,
+  },
+  If {
+    condition: Box<Expr>,
+    true_case: Box<Stmt>,
+    false_case: Option<Box<Stmt>>,
+  },
 }
 
 pub(crate) struct Parser {
@@ -159,11 +167,11 @@ impl Parser {
     } else if self.match_(TokenType::LeftBrace) {
       let statements = self.block()?;
 
-      Ok(Stmt::Block {
-        statements,
-      })
+      Ok(Stmt::Block { statements })
     } else if self.match_(TokenType::While) {
       self.while_()
+    } else if self.match_(TokenType::If) {
+      self.if_()
     } else {
       self.expr_stmt()
     }
@@ -198,20 +206,62 @@ impl Parser {
   }
 
   fn while_(&mut self) -> Result<Stmt> {
-    self.consume(TokenType::LeftParen, SyntaxError::MissingWhileCoditionLeftBrace)?;
+    self.consume(
+      TokenType::LeftParen,
+      SyntaxError::MissingWhileConditionLeftParen,
+    )?;
 
     let expression = self.expression()?;
 
     self.consume(TokenType::RightParen, SyntaxError::MissingRightParen)?;
-    self.consume(TokenType::LeftBrace, SyntaxError::WhileBodyNotEnclosedInBlock)?;
+    self.consume(
+      TokenType::LeftBrace,
+      SyntaxError::WhileBodyNotEnclosedInBlock,
+    )?;
 
     let statements = self.block()?;
 
     Ok(Stmt::While {
       condition: Box::new(expression),
-      statement: Box::new(Stmt::Block {
-        statements,
+      statement: Box::new(Stmt::Block { statements }),
+    })
+  }
+
+  fn if_(&mut self) -> Result<Stmt> {
+    self.consume(
+      TokenType::LeftParen,
+      SyntaxError::MissingIfConditionLeftParen,
+    )?;
+
+    let condition = self.expression()?;
+
+    self.consume(TokenType::RightParen, SyntaxError::MissingRightParen)?;
+    self.consume(
+      TokenType::LeftBrace,
+      SyntaxError::IfBodyNotEnclosedInBlock,
+    )?;
+
+    let true_case = self.block()?;
+
+    let else_case = if self.match_(TokenType::Else) {
+      self.consume(
+        TokenType::LeftBrace,
+        SyntaxError::ElseBodyNotEnclosedInBlock,
+      )?;
+
+      let statements = self.block()?;
+
+      Some(Stmt::Block { statements })
+    } else {
+      None
+    };
+
+    Ok(Stmt::If {
+      condition: Box::new(condition),
+      true_case: Box::new(Stmt::Block {
+        statements: true_case,
       }),
+      false_case: else_case.map(Box::new),
     })
   }
 
@@ -248,7 +298,7 @@ impl Parser {
 
     let initializer = self.expression()?;
 
-    if self.match_( TokenType::Semicolon) {
+    if self.match_(TokenType::Semicolon) {
       Ok(Stmt::Declaration {
         initializer: Box::new(initializer),
         name,
@@ -270,7 +320,8 @@ impl Parser {
 
       let Expr::Literal {
         value: Literal::Identifier { name },
-      } = l_value else {
+      } = l_value
+      else {
         return Err(SyntaxError::LValueMustBeAnIdentifier.into());
       };
 
@@ -316,7 +367,7 @@ impl Parser {
           right: Box::new(self.equality()?),
         };
       } else {
-        break Ok(expr)
+        break Ok(expr);
       }
     }
   }
