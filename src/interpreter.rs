@@ -102,6 +102,42 @@ impl Interpret<Rc<Value>> for Expr {
         }
       }
       Expr::Binary {
+        operator: BinaryOperator::And,
+        left,
+        right,
+      } => {
+        let left_value = left.interpret(Rc::clone(&environment))?;
+
+        if left_value.is_truthy() {
+          let right_value = right.interpret(Rc::clone(&environment))?;
+         
+          if right_value.is_truthy() {
+            return Ok(right_value);
+          }
+        }
+      
+        Ok(Rc::new(Value::Bool(BoolValue(false))))
+      }
+      Expr::Binary {
+        operator: BinaryOperator::Or,
+        left,
+        right,
+      } => {
+        let left_value = left.interpret(Rc::clone(&environment))?;
+
+        if left_value.is_truthy() {
+          return Ok(left_value)
+        }
+        
+        let right_value = right.interpret(Rc::clone(&environment))?;
+        
+        if right_value.is_truthy() {
+          Ok(right_value)
+        } else {
+          Ok(Rc::new(Value::Bool(BoolValue(false))))
+        }
+      }
+      Expr::Binary {
         operator,
         left,
         right,

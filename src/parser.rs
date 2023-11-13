@@ -9,7 +9,9 @@
 // exprStmt      -> expression ";"
 // printStmt     -> "print" expression ";"
 // expression    -> assignment
-// assignment    -> IDENTIFIER "=" assignment | ternary ;
+// assignment    -> IDENTIFIER "=" assignment | logical_or;
+// logical_or    -> logical_and ("or" logical_and)*
+// logical_and   -> ternary ("and" ternary)*
 // ternary       -> comma ("?" comma ":" ternary)?
 // comma         -> equality ("," equality)*
 // equality      -> comparison (("==" | "!=") comparison)*
@@ -36,6 +38,8 @@ pub(crate) enum BinaryOperator {
   Less,
   LessEqual,
   Comma,
+Or,
+And,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -313,7 +317,7 @@ impl Parser {
   }
 
   fn assignment(&mut self) -> Result<Expr> {
-    let l_value = self.ternary()?;
+    let l_value = self.logical_or()?;
 
     if self.match_(TokenType::Eqal) {
       let r_value = self.assignment()?;
@@ -331,6 +335,38 @@ impl Parser {
       })
     } else {
       Ok(l_value)
+    }
+  }
+
+  fn logical_or(&mut self) -> Result<Expr> {
+    let mut expr = self.logical_and()?;
+
+    loop {
+      if self.match_(TokenType::Or) {
+        expr = Expr::Binary {
+          operator: BinaryOperator::Or,
+          left: Box::new(expr),
+          right: Box::new(self.logical_and()?),
+        };
+      } else {
+        break Ok(expr);
+      };
+    }
+  }
+
+  fn logical_and(&mut self) -> Result<Expr> {
+    let mut expr = self.ternary()?;
+
+    loop {
+      if self.match_(TokenType::And) {
+        expr = Expr::Binary {
+          operator: BinaryOperator::And,
+          left: Box::new(expr),
+          right: Box::new(self.ternary()?),
+        };
+      } else {
+        break Ok(expr);
+      };
     }
   }
 
