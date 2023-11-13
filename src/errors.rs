@@ -37,4 +37,10 @@ pub(crate) enum SyntaxError {
 
   #[error("expected closing '}}' after a block")]
   MissingRightBrace,
+
+  #[error("'while' condition must be enclosed in parens")]
+  MissingWhileCoditionLeftBrace,
+
+  #[error("'while' body must be enclosed in block")]
+  WhileBodyNotEnclosedInBlock,
 }

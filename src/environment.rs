@@ -33,16 +33,18 @@ impl Environment {
   }
 
   pub(crate) fn assign(&mut self, identifier: &str, value: Rc<Value>) -> Result<Rc<Value>> {
-    if !self.values.contains_key(identifier) {
+    if self.values.contains_key(identifier) {
+      self.values.insert(identifier.to_string(), value.clone());
+      Ok(value)
+    } else if let Some(parent) = &self.parent {
+      parent.borrow_mut().assign(identifier, value)
+    } else {
       Err(
         RuntimeError::AssignmentToUndeclaredVariable {
           identifier: identifier.to_string(),
         }
-        .into(),
+          .into(),
       )
-    } else {
-      self.values.insert(identifier.to_string(), value.clone());
-      Ok(value)
     }
   }
 }

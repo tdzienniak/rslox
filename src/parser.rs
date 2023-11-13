@@ -3,6 +3,7 @@
 // declaration   -> varDecl | statement
 // varDecl       -> "var" IDENTIFIER ("=" expression)? ";"
 // statement     -> printStmt | exprStmt | block
+// while         -> "while" "(" expression ")" block
 // block         -> "{" declaration* "}"
 // exprStmt      -> expression ";"
 // printStmt     -> "print" expression ";"
@@ -92,6 +93,10 @@ pub(crate) enum Stmt {
     initializer: Box<Expr>,
   },
   Block { statements: Vec<Stmt> },
+  While {
+    condition: Box<Expr>,
+    statement: Box<Stmt>
+  }
 }
 
 pub(crate) struct Parser {
@@ -157,6 +162,8 @@ impl Parser {
       Ok(Stmt::Block {
         statements,
       })
+    } else if self.match_(TokenType::While) {
+      self.while_()
     } else {
       self.expr_stmt()
     }
@@ -187,6 +194,32 @@ impl Parser {
       Ok(statements)
     } else {
       Err(SyntaxError::MissingRightBrace.into())
+    }
+  }
+
+  fn while_(&mut self) -> Result<Stmt> {
+    self.consume(TokenType::LeftParen, SyntaxError::MissingWhileCoditionLeftBrace)?;
+
+    let expression = self.expression()?;
+
+    self.consume(TokenType::RightParen, SyntaxError::MissingRightParen)?;
+    self.consume(TokenType::LeftBrace, SyntaxError::WhileBodyNotEnclosedInBlock)?;
+
+    let statements = self.block()?;
+
+    Ok(Stmt::While {
+      condition: Box::new(expression),
+      statement: Box::new(Stmt::Block {
+        statements,
+      }),
+    })
+  }
+
+  fn consume(&mut self, token: TokenType, err: SyntaxError) -> Result<()> {
+    if !self.match_(token) {
+      Err(err.into())
+    } else {
+      Ok(())
     }
   }
 

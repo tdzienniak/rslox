@@ -141,6 +141,30 @@ impl Interpret<Rc<Value>> for Expr {
             }
             _ => Err(anyhow!("todo")),
           },
+          BinaryOperator::Less => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Bool(BoolValue(v1.0 < v2.0))))
+            }
+            _ => Err(anyhow!("todo")),
+          },
+          BinaryOperator::Greater => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Bool(BoolValue(v1.0 > v2.0))))
+            }
+            _ => Err(anyhow!("todo")),
+          },
+          BinaryOperator::GreaterEqual => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Bool(BoolValue(v1.0 >= v2.0))))
+            }
+            _ => Err(anyhow!("todo")),
+          },
+          BinaryOperator::LessEqual => match (left_value.as_ref(), right_value.as_ref()) {
+            (Value::Number(v1), Value::Number(v2)) => {
+              Ok(Rc::new(Value::Bool(BoolValue(v1.0 <= v2.0))))
+            }
+            _ => Err(anyhow!("todo")),
+          },
           _ => Err(anyhow!("todo")),
         }
       }
@@ -215,6 +239,13 @@ impl Interpret<()> for Stmt {
         let value = initializer.interpret(Rc::clone(&environment))?;
 
         environment.borrow_mut().define(name, value);
+
+        Ok(())
+      }
+      Stmt::While { condition, statement} => {
+        while condition.interpret(Rc::clone(&environment))?.is_truthy() {
+          statement.interpret(Rc::clone(&environment))?;
+        }
 
         Ok(())
       }
