@@ -1,9 +1,10 @@
-use std::cell::RefCell;
 use crate::environment::Environment;
 use crate::errors::RuntimeError;
 use crate::parser::{BinaryOperator, Expr, Literal, Stmt, UnaryOperator};
 use anyhow::{anyhow, Result};
+use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug)]
 pub(crate) struct NumberValue(f64);
@@ -14,12 +15,44 @@ pub(crate) struct StringValue(String);
 #[derive(Debug)]
 pub(crate) struct BoolValue(bool);
 
-#[derive(Debug)]
+pub(crate) trait Callable {
+  fn call(&self, arguments: Vec<Rc<Value>>) -> Result<Rc<Value>>;
+}
+
+pub(crate) struct NativeClock;
+
+impl Callable for NativeClock {
+  fn call(&self, _arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+      .duration_since(UNIX_EPOCH)
+      .expect("Time went backwards");
+    Ok(Rc::new(Value::Number(NumberValue(since_the_epoch.as_secs_f64()))))
+  }
+}
+
+pub(crate) struct NativePrint;
+
+impl Callable for NativePrint {
+  fn call(&self, _arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+    println!("{}", _arguments.iter().map(|value| match value.as_ref() {
+      Value::Number(value) => value.0.to_string(),
+      Value::String(value) => value.0.clone(),
+      Value::Bool(value) => value.0.to_string(),
+      Value::Nil => "nil".to_string(),
+      Value::Function(_) => "function".to_string(),
+    }).collect::<Vec<String>>().join(" "));
+
+    Ok(Rc::new(Value::Nil))
+  }
+}
+
 pub(crate) enum Value {
   Number(NumberValue),
   String(StringValue),
   Bool(BoolValue),
   Nil,
+  Function(Box<dyn Callable>),
 }
 
 impl Value {
@@ -29,6 +62,7 @@ impl Value {
       Value::Number(_) => "number".to_string(),
       Value::String(_) => "string".to_string(),
       Value::Nil => "nil".to_string(),
+      Value::Function(_) => "function".to_string(),
     }
   }
 
@@ -110,12 +144,12 @@ impl Interpret<Rc<Value>> for Expr {
 
         if left_value.is_truthy() {
           let right_value = right.interpret(Rc::clone(&environment))?;
-         
+
           if right_value.is_truthy() {
             return Ok(right_value);
           }
         }
-      
+
         Ok(Rc::new(Value::Bool(BoolValue(false))))
       }
       Expr::Binary {
@@ -126,11 +160,11 @@ impl Interpret<Rc<Value>> for Expr {
         let left_value = left.interpret(Rc::clone(&environment))?;
 
         if left_value.is_truthy() {
-          return Ok(left_value)
+          return Ok(left_value);
         }
-        
+
         let right_value = right.interpret(Rc::clone(&environment))?;
-        
+
         if right_value.is_truthy() {
           Ok(right_value)
         } else {
@@ -236,6 +270,23 @@ impl Interpret<Rc<Value>> for Expr {
 
         environment.borrow_mut().assign(name, value)
       }
+      Expr::Call {
+        function,
+        arguments,
+      } => {
+        let function_value = function.interpret(Rc::clone(&environment))?;
+        let Value::Function(callable) = function_value.as_ref() else {
+          todo!("err")
+        };
+
+        let mut eval_arguments: Vec<Rc<Value>> = vec![];
+
+        for arg in arguments {
+          eval_arguments.push(arg.interpret(Rc::clone(&environment))?);
+        }
+
+        Ok(callable.call(eval_arguments)?)
+      }
     }
   }
 }
@@ -251,21 +302,24 @@ impl Interpret<()> for Stmt {
           Value::String(value) => value.0.clone(),
           Value::Bool(value) => value.0.to_string(),
           Value::Nil => "nil".to_string(),
+          Value::Function(_) => "function".to_string(),
         };
 
         println!("{}", value_str);
 
         Ok(())
       }
-      Stmt::Block { statements} => {
-        let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(&environment)))));
+      Stmt::Block { statements } => {
+        let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
+          &environment,
+        )))));
 
         for stmt in statements {
           stmt.interpret(Rc::clone(&block_environment))?;
         }
 
         Ok(())
-      },
+      }
       Stmt::Expression { expression } => {
         expression.interpret(environment)?;
 
@@ -278,14 +332,21 @@ impl Interpret<()> for Stmt {
 
         Ok(())
       }
-      Stmt::While { condition, statement} => {
+      Stmt::While {
+        condition,
+        statement,
+      } => {
         while condition.interpret(Rc::clone(&environment))?.is_truthy() {
           statement.interpret(Rc::clone(&environment))?;
         }
 
         Ok(())
-      },
-      Stmt::If {condition, true_case, false_case} => {
+      }
+      Stmt::If {
+        condition,
+        true_case,
+        false_case,
+      } => {
         if condition.interpret(Rc::clone(&environment))?.is_truthy() {
           true_case.interpret(Rc::clone(&environment))?;
         } else if let Some(statement) = false_case {

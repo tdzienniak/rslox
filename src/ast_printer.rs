@@ -1,5 +1,4 @@
-use crate::parser::{BinaryOperator, Expr, Literal, UnaryOperator};
-use std::fmt::format;
+use crate::parser::{BinaryOperator, Expr, Literal, UnaryOperator, Stmt};
 
 pub(crate) trait Printer {
   fn print(&self) -> String;
@@ -59,6 +58,26 @@ impl Printer for Expr {
         Literal::Nil => "nil".to_string(),
       },
       Expr::Assignment { .. } => "toto".to_string(),
+      Expr::Call { function, arguments } => {
+        todo!()
+      }
+    }
+  }
+}
+
+impl Printer for Stmt {
+
+  fn print(&self) -> String {
+    // let mut out = String::new();
+
+    match self {
+      Stmt::Expression { expression } => {
+        expression.print()
+      },
+      Stmt::Declaration { name, initializer } => {
+        format!("{}: {}", name, initializer.print())
+      },
+      _ => todo!("todo")
     }
   }
 }

@@ -8,17 +8,19 @@
 // block         -> "{" declaration* "}"
 // exprStmt      -> expression ";"
 // printStmt     -> "print" expression ";"
-// expression    -> assignment
+// expression    -> comma;
+// comma         -> assignment ("," assignment)*
 // assignment    -> IDENTIFIER "=" assignment | logical_or;
 // logical_or    -> logical_and ("or" logical_and)*
 // logical_and   -> ternary ("and" ternary)*
-// ternary       -> comma ("?" comma ":" ternary)?
-// comma         -> equality ("," equality)*
+// ternary       -> equality ("?" equality ":" ternary)?
 // equality      -> comparison (("==" | "!=") comparison)*
 // comparison    -> term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
 // term          -> factor ( ( "-" | "+" ) factor )* ;
 // factor        -> unary ( ( "/" | "*" ) unary )* ;
-// unary         -> ( "!" | "-" ) unary | primary ;
+// unary         -> ( "!" | "-" ) unary | call ;
+// call          -> primary ("(" arguments ")")*
+// arguments     -> expression ("," expression)*
 // primary       -> IDENTIFIER | NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
 
 use crate::errors::SyntaxError;
@@ -84,6 +86,10 @@ pub(crate) enum Expr {
     name: String,
     expression: Box<Expr>,
   },
+  Call {
+    function: Box<Expr>,
+    arguments: Vec<Expr>
+  } 
 }
 
 pub(crate) enum Stmt {
@@ -313,7 +319,7 @@ impl Parser {
   }
 
   fn expression(&mut self) -> Result<Expr> {
-    self.assignment()
+    self.comma()
   }
 
   fn assignment(&mut self) -> Result<Expr> {
@@ -371,10 +377,10 @@ impl Parser {
   }
 
   fn ternary(&mut self) -> Result<Expr> {
-    let conditional = self.comma()?;
+    let conditional = self.equality()?;
 
     if self.match_(TokenType::Question) {
-      let true_case = self.comma()?;
+      let true_case = self.equality()?;
 
       if self.match_(TokenType::Colon) {
         let false_case = self.ternary()?;
@@ -393,14 +399,14 @@ impl Parser {
   }
 
   fn comma(&mut self) -> Result<Expr> {
-    let mut expr = self.equality()?;
+    let mut expr = self.assignment()?;
 
     loop {
       if self.match_(TokenType::Comma) {
         expr = Expr::Binary {
           operator: BinaryOperator::Comma,
           left: Box::new(expr),
-          right: Box::new(self.equality()?),
+          right: Box::new(self.assignment()?),
         };
       } else {
         break Ok(expr);
@@ -517,11 +523,11 @@ impl Parser {
       ($value:expr) => {{
         self.advance();
 
-        Ok(Expr::Literal { value: $value })
+        Expr::Literal { value: $value }
       }};
     }
 
-    match self.peek().kind.clone() {
+    let mut primary = match self.peek().kind.clone() {
       TokenType::Number(value) => create_primary_expr!(Literal::Number { value }),
       TokenType::String(value) => create_primary_expr!(Literal::String { value }),
       TokenType::True => create_primary_expr!(Literal::True),
@@ -534,15 +540,48 @@ impl Parser {
         let expr = self.expression()?;
 
         if self.match_(TokenType::RightParen) {
-          Ok(Expr::Grouping {
+          Expr::Grouping {
             expr: Box::new(expr),
-          })
+          }
         } else {
-          Err(SyntaxError::MissingRightParen.into())
+          return Err(SyntaxError::MissingRightParen.into())
         }
       }
-      _ => Err(SyntaxError::UnexpectedTokenInExpression.into()),
+      _ => { return Err(SyntaxError::UnexpectedTokenInExpression.into()) },
+    };
+
+    loop {
+      if self.match_(TokenType::LeftParen) {
+        let arguments = self.finish_call()?;
+
+        primary = Expr::Call {
+          function: Box::new(primary),
+          arguments,
+        }
+      } else {
+        break Ok(primary)
+      }
     }
+  }
+
+  fn finish_call(&mut self) -> Result<Vec<Expr>> {
+    let mut arguments: Vec<Expr> = vec![];
+
+    if self.match_(TokenType::RightParen) {
+      return Ok(arguments);
+    }
+
+    loop {
+      arguments.push(self.assignment()?);
+
+      if !self.match_(TokenType::Comma) {
+        break;
+      }
+    }
+
+    self.consume(TokenType::RightParen, SyntaxError::MissingRightParen)?;
+
+    Ok(arguments)
   }
 
   fn advance(&mut self) -> &Token {
@@ -602,18 +641,18 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-  use crate::scanner::Scanner;
+  use crate::{scanner::Scanner, ast_printer::Printer};
 
   use super::*;
 
   #[test]
   fn test_name() {
-    let scaner = Scanner::new("a = b = true ? 1 : 2;".to_string());
+    let scaner = Scanner::new("test()(1, 2);".to_string());
     let mut parser = Parser::new(scaner.scan_tokens().unwrap());
 
     let ast = parser.parse().unwrap();
 
-    assert_eq!(true, true)
+    assert_eq!(ast[0].print(), "")
     //
     // assert_eq!(
     //   ast.print(),
