@@ -3,6 +3,7 @@ use crate::errors::RuntimeError;
 use crate::parser::{BinaryOperator, Expr, Literal, Stmt, UnaryOperator};
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
+use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -27,21 +28,61 @@ impl Callable for NativeClock {
     let since_the_epoch = start
       .duration_since(UNIX_EPOCH)
       .expect("Time went backwards");
-    Ok(Rc::new(Value::Number(NumberValue(since_the_epoch.as_secs_f64()))))
+    Ok(Rc::new(Value::Number(NumberValue(
+      since_the_epoch.as_secs_f64(),
+    ))))
   }
 }
 
-pub(crate) struct NativePrint;
+pub(crate) struct NativePrintln;
 
-impl Callable for NativePrint {
-  fn call(&self, _arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
-    println!("{}", _arguments.iter().map(|value| match value.as_ref() {
-      Value::Number(value) => value.0.to_string(),
-      Value::String(value) => value.0.clone(),
-      Value::Bool(value) => value.0.to_string(),
-      Value::Nil => "nil".to_string(),
-      Value::Function(_) => "function".to_string(),
-    }).collect::<Vec<String>>().join(" "));
+impl Callable for NativePrintln {
+  fn call(&self, arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+    println!(
+      "{}",
+      arguments
+        .iter()
+        .map(|value| format!("{}", value))
+        .collect::<Vec<String>>()
+        .join(" ")
+    );
+
+    Ok(Rc::new(Value::Nil))
+  }
+}
+
+pub(crate) struct Fun {
+  parameters: Vec<String>,
+  body: Vec<Stmt>,
+  name: String,
+  environment: Rc<RefCell<Environment>>,
+}
+
+impl Fun {
+  fn new(parameters: Vec<String>, body: Vec<Stmt>, name: String, environment: Environment) -> Self {
+    Fun {
+      body,
+      parameters,
+      name,
+      environment: Rc::new(RefCell::new(environment)),
+    }
+  }
+}
+
+impl Callable for Fun {
+  fn call(&self, arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+    if arguments.len() != self.parameters.len() {
+      panic!("aaaaaa")
+    }
+
+    for (index, param) in self.parameters.iter().enumerate() {
+      self.environment.borrow_mut().define(param, Rc::clone(&arguments[index]))
+    }
+
+
+    for stmt in &self.body {
+      stmt.interpret(Rc::clone(&self.environment))?;
+    }
 
     Ok(Rc::new(Value::Nil))
   }
@@ -53,6 +94,20 @@ pub(crate) enum Value {
   Bool(BoolValue),
   Nil,
   Function(Box<dyn Callable>),
+}
+
+impl Display for Value {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    let value_as_string = match self {
+      Value::Number(value) => value.0.to_string(),
+      Value::String(value) => value.0.clone(),
+      Value::Bool(value) => value.0.to_string(),
+      Value::Nil => "nil".to_string(),
+      Value::Function(_) => "function".to_string(),
+    };
+
+    write!(f, "{}", value_as_string)
+  }
 }
 
 impl Value {
@@ -294,21 +349,6 @@ impl Interpret<Rc<Value>> for Expr {
 impl Interpret<()> for Stmt {
   fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<()> {
     match self {
-      Stmt::Print { expression } => {
-        let value = expression.interpret(Rc::clone(&environment))?;
-
-        let value_str = match value.as_ref() {
-          Value::Number(value) => value.0.to_string(),
-          Value::String(value) => value.0.clone(),
-          Value::Bool(value) => value.0.to_string(),
-          Value::Nil => "nil".to_string(),
-          Value::Function(_) => "function".to_string(),
-        };
-
-        println!("{}", value_str);
-
-        Ok(())
-      }
       Stmt::Block { statements } => {
         let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
           &environment,
@@ -317,20 +357,30 @@ impl Interpret<()> for Stmt {
         for stmt in statements {
           stmt.interpret(Rc::clone(&block_environment))?;
         }
-
-        Ok(())
       }
       Stmt::Expression { expression } => {
         expression.interpret(environment)?;
-
-        Ok(())
       }
       Stmt::Declaration { name, initializer } => {
         let value = initializer.interpret(Rc::clone(&environment))?;
 
         environment.borrow_mut().define(name, value);
+      }
+      Stmt::FunDeclaration {
+        name,
+        parameters,
+        body,
+      } => {
+        let value = Fun::new(
+          parameters.clone(),
+          body.clone(),
+          name.clone(),
+          Environment::new(Some(Rc::clone(&environment))),
+        );
 
-        Ok(())
+        environment
+          .borrow_mut()
+          .define(name, Rc::new(Value::Function(Box::new(value))));
       }
       Stmt::While {
         condition,
@@ -339,8 +389,6 @@ impl Interpret<()> for Stmt {
         while condition.interpret(Rc::clone(&environment))?.is_truthy() {
           statement.interpret(Rc::clone(&environment))?;
         }
-
-        Ok(())
       }
       Stmt::If {
         condition,
@@ -352,9 +400,9 @@ impl Interpret<()> for Stmt {
         } else if let Some(statement) = false_case {
           statement.interpret(Rc::clone(&environment))?;
         }
-
-        Ok(())
       }
-    }
+    };
+
+    Ok(())
   }
 }

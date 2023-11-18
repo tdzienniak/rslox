@@ -52,4 +52,16 @@ pub(crate) enum SyntaxError {
 
   #[error("'else' body must be enclosed in block")]
   ElseBodyNotEnclosedInBlock,
+
+  #[error("parameters must be enclosed in parens")]
+  MissingParametersDeclarationOpeningParen,
+
+  #[error("missing function identifier")]
+  MissingFunctionDeclarationIdentifier,
+
+  #[error("expected parameter identifier")]
+  ExpectedParameterIdentifier,
+
+  #[error("missing function body opening brace")]
+  MissingBodyOpeningBrace,
 }

@@ -1,13 +1,15 @@
 // Syntax grammar:
 // program       -> declaration* EOF
 // declaration   -> varDecl | statement
+// funDecl       -> "fun" function
+// function      -> IDENTIFIER "(" parameters? ")" block
+// parameters    -> IDENTIFIER ("," IDENTIFIER)*
 // varDecl       -> "var" IDENTIFIER ("=" expression)? ";"
-// statement     -> printStmt | exprStmt | block | while | if
+// statement     -> exprStmt | block | while | if
 // while         -> "while" "(" expression ")" block
 // if            -> "if" "(" expression ")" block ("else" block)?
 // block         -> "{" declaration* "}"
 // exprStmt      -> expression ";"
-// printStmt     -> "print" expression ";"
 // expression    -> comma;
 // comma         -> assignment ("," assignment)*
 // assignment    -> IDENTIFIER "=" assignment | logical_or;
@@ -26,6 +28,7 @@
 use crate::errors::SyntaxError;
 use crate::scanner::{Token, TokenType};
 use anyhow::Result;
+use clap::builder::Str;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOperator {
@@ -40,8 +43,8 @@ pub(crate) enum BinaryOperator {
   Less,
   LessEqual,
   Comma,
-Or,
-And,
+  Or,
+  And,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,7 +53,7 @@ pub(crate) enum UnaryOperator {
   Bang,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(crate) enum Literal {
   Number { value: f64 },
   String { value: String },
@@ -60,7 +63,7 @@ pub(crate) enum Literal {
   Identifier { name: String },
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub(crate) enum Expr {
   Ternary {
     conditional: Box<Expr>,
@@ -88,20 +91,24 @@ pub(crate) enum Expr {
   },
   Call {
     function: Box<Expr>,
-    arguments: Vec<Expr>
-  } 
+    arguments: Vec<Expr>,
+  },
 }
 
+
+#[derive(Debug, Clone)]
 pub(crate) enum Stmt {
-  Print {
-    expression: Box<Expr>,
-  },
   Expression {
     expression: Box<Expr>,
   },
   Declaration {
     name: String,
     initializer: Box<Expr>,
+  },
+  FunDeclaration {
+    name: String,
+    parameters: Vec<String>,
+    body: Vec<Stmt>,
   },
   Block {
     statements: Vec<Stmt>,
@@ -155,6 +162,8 @@ impl Parser {
   fn declaration(&mut self) -> Result<Option<Stmt>> {
     let stmt = if self.match_(TokenType::Var) {
       self.variable_declaration()
+    } else if self.match_(TokenType::Fun) {
+      self.function_declaration()
     } else {
       self.statement()
     };
@@ -171,10 +180,74 @@ impl Parser {
     })
   }
 
+  fn function_declaration(&mut self) -> Result<Stmt> {
+    let name = {
+      let TokenType::Identifier(ref identifier) = self.peek().kind else {
+        return Err(SyntaxError::MissingFunctionDeclarationIdentifier.into());
+      };
+
+      identifier.clone()
+    };
+
+    self.advance();
+
+    self.consume(
+      TokenType::LeftParen,
+      SyntaxError::MissingParametersDeclarationOpeningParen,
+    )?;
+
+    let parameters = if !self.match_(TokenType::RightParen) {
+      let parameters = self.parameters()?;
+
+      self.consume(
+        TokenType::RightParen,
+        SyntaxError::MissingParametersDeclarationOpeningParen,
+      )?;
+
+      parameters
+    } else {
+      vec![]
+    };
+
+    self.consume(TokenType::LeftBrace, SyntaxError::MissingBodyOpeningBrace)?;
+
+    let body = self.block()?;
+
+    Ok(Stmt::FunDeclaration {
+      name: name.clone(),
+      body,
+      parameters,
+    })
+  }
+
+  fn parameters(&mut self) -> Result<Vec<String>> {
+    let mut parameters: Vec<String> = vec![self.match_parameter_identifier()?];
+
+    loop {
+      if self.match_(TokenType::Comma) {
+        parameters.push(self.match_parameter_identifier()?)
+      } else {
+        break Ok(parameters);
+      }
+    }
+  }
+
+  fn match_parameter_identifier(&mut self) -> Result<String> {
+    let identifier = {
+      let TokenType::Identifier(ref identifier) = self.peek().kind else {
+        return Err(SyntaxError::ExpectedParameterIdentifier.into());
+      };
+
+      identifier.clone()
+    };
+
+    self.advance();
+
+    Ok(identifier)
+  }
+
   fn statement(&mut self) -> Result<Stmt> {
-    if self.match_(TokenType::Print) {
-      self.print_stmt()
-    } else if self.match_(TokenType::LeftBrace) {
+    if self.match_(TokenType::LeftBrace) {
       let statements = self.block()?;
 
       Ok(Stmt::Block { statements })
@@ -184,18 +257,6 @@ impl Parser {
       self.if_()
     } else {
       self.expr_stmt()
-    }
-  }
-
-  fn print_stmt(&mut self) -> Result<Stmt> {
-    let expression = self.expression()?;
-
-    if self.match_(TokenType::Semicolon) {
-      Ok(Stmt::Print {
-        expression: Box::new(expression),
-      })
-    } else {
-      Err(SyntaxError::MissingSemicolon.into())
     }
   }
 
@@ -246,10 +307,7 @@ impl Parser {
     let condition = self.expression()?;
 
     self.consume(TokenType::RightParen, SyntaxError::MissingRightParen)?;
-    self.consume(
-      TokenType::LeftBrace,
-      SyntaxError::IfBodyNotEnclosedInBlock,
-    )?;
+    self.consume(TokenType::LeftBrace, SyntaxError::IfBodyNotEnclosedInBlock)?;
 
     let true_case = self.block()?;
 
@@ -544,10 +602,10 @@ impl Parser {
             expr: Box::new(expr),
           }
         } else {
-          return Err(SyntaxError::MissingRightParen.into())
+          return Err(SyntaxError::MissingRightParen.into());
         }
       }
-      _ => { return Err(SyntaxError::UnexpectedTokenInExpression.into()) },
+      _ => return Err(SyntaxError::UnexpectedTokenInExpression.into()),
     };
 
     loop {
@@ -559,7 +617,7 @@ impl Parser {
           arguments,
         }
       } else {
-        break Ok(primary)
+        break Ok(primary);
       }
     }
   }
@@ -641,7 +699,7 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-  use crate::{scanner::Scanner, ast_printer::Printer};
+  use crate::{ast_printer::Printer, scanner::Scanner};
 
   use super::*;
 

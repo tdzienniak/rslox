@@ -1,5 +1,5 @@
 use crate::environment::Environment;
-use crate::interpreter::{Interpret, NativeClock, NativePrint, Value};
+use crate::interpreter::{Interpret, NativeClock, NativePrintln, Value};
 use crate::parser::Parser;
 use crate::scanner::Scanner;
 use anyhow::Result;
@@ -20,7 +20,7 @@ pub fn run(source: String) -> Result<()> {
       .borrow_mut();
 
     env.define("clock", Rc::new(Value::Function(Box::new(NativeClock {}))));
-    env.define("println", Rc::new(Value::Function(Box::new(NativePrint {}))));
+    env.define("println", Rc::new(Value::Function(Box::new(NativePrintln {}))));
   }
 
   for stmt in &statements {
