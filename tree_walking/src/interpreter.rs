@@ -1,6 +1,7 @@
 use crate::environment::Environment;
 use crate::errors::RuntimeError;
 use crate::parser::{BinaryOperator, Expr, Literal, Stmt, UnaryOperator};
+use crate::resolver::Locals;
 use anyhow::{anyhow, Result};
 use std::cell::RefCell;
 use std::fmt::{Display, Formatter};
@@ -17,13 +18,13 @@ pub(crate) struct StringValue(String);
 pub(crate) struct BoolValue(bool);
 
 pub(crate) trait Callable {
-  fn call(&self, arguments: Vec<Rc<Value>>) -> Result<Rc<Value>>;
+  fn call(&self, arguments: Vec<Rc<Value>>, interpreter: &mut Interpreter) -> Result<Rc<Value>>;
 }
 
 pub(crate) struct NativeClock;
 
 impl Callable for NativeClock {
-  fn call(&self, _arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+  fn call(&self, _arguments: Vec<Rc<Value>>, interpreter: &mut Interpreter) -> Result<Rc<Value>> {
     let start = SystemTime::now();
     let since_the_epoch = start
       .duration_since(UNIX_EPOCH)
@@ -37,7 +38,7 @@ impl Callable for NativeClock {
 pub(crate) struct NativePrintln;
 
 impl Callable for NativePrintln {
-  fn call(&self, arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+  fn call(&self, arguments: Vec<Rc<Value>>, interpreter: &mut Interpreter) -> Result<Rc<Value>> {
     println!(
       "{}",
       arguments
@@ -70,18 +71,20 @@ impl Fun {
 }
 
 impl Callable for Fun {
-  fn call(&self, arguments: Vec<Rc<Value>>) -> Result<Rc<Value>> {
+  fn call(&self, arguments: Vec<Rc<Value>>, interpreter: &mut Interpreter) -> Result<Rc<Value>> {
     if arguments.len() != self.parameters.len() {
       panic!("aaaaaa")
     }
 
     for (index, param) in self.parameters.iter().enumerate() {
-      self.environment.borrow_mut().define(param, Rc::clone(&arguments[index]))
+      self
+        .environment
+        .borrow_mut()
+        .define(param, Rc::clone(&arguments[index]));
     }
 
-
     for stmt in &self.body {
-      stmt.interpret(Rc::clone(&self.environment))?;
+      interpreter.interpret_stmt(stmt, Rc::clone(&self.environment))?;
     }
 
     Ok(Rc::new(Value::Nil))
@@ -152,15 +155,45 @@ impl Value {
   }
 }
 
-pub(crate) trait Interpret<T> {
-  fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<T>;
+pub(crate) struct Interpreter {
+  pub(crate) locals: Locals,
 }
 
-impl Interpret<Rc<Value>> for Expr {
-  fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<Rc<Value>> {
-    match self {
+impl Interpreter {
+  pub(crate) fn new(locals: Locals) -> Self {
+    Interpreter { locals }
+  }
+
+  pub(crate) fn interpret_program(mut self, program: Vec<Stmt>) -> Result<()> {
+    let global = Rc::new(RefCell::new(Environment::new(None)));
+
+    {
+      let mut env = global.borrow_mut();
+
+      env.define("clock", Rc::new(Value::Function(Box::new(NativeClock {}))));
+      env.define(
+        "println",
+        Rc::new(Value::Function(Box::new(NativePrintln {}))),
+      );
+    }
+
+    let top = Rc::new(RefCell::new(Environment::new(Some(global))));
+
+    for stmt in &program {
+      self.interpret_stmt(stmt, Rc::clone(&top))?;
+    }
+
+    Ok(())
+  }
+
+  fn interpret_expr(
+    &mut self,
+    expr: &Expr,
+    environment: Rc<RefCell<Environment>>,
+  ) -> Result<Rc<Value>> {
+    match expr {
       Expr::Unary { operator, expr } => {
-        let value = expr.interpret(environment)?;
+        let value = self.interpret_expr(expr, environment)?;
         match operator {
           UnaryOperator::Bang => {
             if let Value::Bool(inner) = value.as_ref() {
@@ -195,10 +228,10 @@ impl Interpret<Rc<Value>> for Expr {
         left,
         right,
       } => {
-        let left_value = left.interpret(Rc::clone(&environment))?;
+        let left_value = self.interpret_expr(left, Rc::clone(&environment))?;
 
         if left_value.is_truthy() {
-          let right_value = right.interpret(Rc::clone(&environment))?;
+          let right_value = self.interpret_expr(right, Rc::clone(&environment))?;
 
           if right_value.is_truthy() {
             return Ok(right_value);
@@ -212,13 +245,13 @@ impl Interpret<Rc<Value>> for Expr {
         left,
         right,
       } => {
-        let left_value = left.interpret(Rc::clone(&environment))?;
+        let left_value = self.interpret_expr(left, Rc::clone(&environment))?;
 
         if left_value.is_truthy() {
           return Ok(left_value);
         }
 
-        let right_value = right.interpret(Rc::clone(&environment))?;
+        let right_value = self.interpret_expr(right, Rc::clone(&environment))?;
 
         if right_value.is_truthy() {
           Ok(right_value)
@@ -231,8 +264,8 @@ impl Interpret<Rc<Value>> for Expr {
         left,
         right,
       } => {
-        let left_value = left.interpret(Rc::clone(&environment))?;
-        let right_value = right.interpret(Rc::clone(&environment))?;
+        let left_value = self.interpret_expr(left, Rc::clone(&environment))?;
+        let right_value = self.interpret_expr(right, Rc::clone(&environment))?;
 
         match operator {
           BinaryOperator::BangEqual => Ok(Rc::new(Value::Bool(BoolValue(
@@ -298,38 +331,49 @@ impl Interpret<Rc<Value>> for Expr {
         true_case,
         false_case,
       } => {
-        let conditional_value = conditional.interpret(Rc::clone(&environment))?;
+        let conditional_value = self.interpret_expr(conditional, Rc::clone(&environment))?;
 
         if conditional_value.is_truthy() {
-          true_case.interpret(Rc::clone(&environment))
+          self.interpret_expr(true_case, Rc::clone(&environment))
         } else {
-          false_case.interpret(Rc::clone(&environment))
+          self.interpret_expr(false_case, Rc::clone(&environment))
         }
       }
-      Expr::Grouping { expr } => expr.interpret(environment),
+      Expr::Grouping { expr } => self.interpret_expr(expr, environment),
       Expr::Literal { value } => match value {
         Literal::True => Ok(Value::Bool(BoolValue(true)).into()),
         Literal::False => Ok(Value::Bool(BoolValue(false)).into()),
         Literal::Number { value } => Ok(Value::Number(NumberValue(*value)).into()),
         Literal::String { value } => Ok(Value::String(StringValue(value.clone())).into()),
         Literal::Nil => Ok(Value::Nil.into()),
-        Literal::Identifier { name } => environment.borrow().get(name).ok_or(
-          RuntimeError::UndefinedIdentifier {
-            name: name.to_string(),
-          }
-          .into(),
-        ),
+        Literal::Identifier { name, id } => environment
+          .borrow()
+          .get(name, *self.locals.get(id).unwrap())
+          .ok_or(
+            RuntimeError::UndefinedIdentifier {
+              name: name.to_string(),
+            }
+            .into(),
+          ),
       },
-      Expr::Assignment { name, expression } => {
-        let value = expression.interpret(Rc::clone(&environment))?;
+      Expr::Assignment {
+        name,
+        expression,
+        id,
+      } => {
+        let value = self.interpret_expr(expression, Rc::clone(&environment))?;
 
-        environment.borrow_mut().assign(name, value)
+        Ok(
+          environment
+            .borrow_mut()
+            .assign(name, value, *self.locals.get(id).unwrap()),
+        )
       }
       Expr::Call {
         function,
         arguments,
       } => {
-        let function_value = function.interpret(Rc::clone(&environment))?;
+        let function_value = self.interpret_expr(function, Rc::clone(&environment))?;
         let Value::Function(callable) = function_value.as_ref() else {
           todo!("err")
         };
@@ -337,32 +381,30 @@ impl Interpret<Rc<Value>> for Expr {
         let mut eval_arguments: Vec<Rc<Value>> = vec![];
 
         for arg in arguments {
-          eval_arguments.push(arg.interpret(Rc::clone(&environment))?);
+          eval_arguments.push(self.interpret_expr(arg, Rc::clone(&environment))?);
         }
 
-        Ok(callable.call(eval_arguments)?)
+        Ok(callable.call(eval_arguments, self)?)
       }
     }
   }
-}
 
-impl Interpret<()> for Stmt {
-  fn interpret(&self, environment: Rc<RefCell<Environment>>) -> Result<()> {
-    match self {
+  fn interpret_stmt(&mut self, stmt: &Stmt, environment: Rc<RefCell<Environment>>) -> Result<()> {
+    match stmt {
       Stmt::Block { statements } => {
         let block_environment = Rc::new(RefCell::new(Environment::new(Some(Rc::clone(
           &environment,
         )))));
 
         for stmt in statements {
-          stmt.interpret(Rc::clone(&block_environment))?;
+          self.interpret_stmt(stmt, Rc::clone(&block_environment))?;
         }
       }
       Stmt::Expression { expression } => {
-        expression.interpret(environment)?;
+        self.interpret_expr(expression, environment)?;
       }
       Stmt::Declaration { name, initializer } => {
-        let value = initializer.interpret(Rc::clone(&environment))?;
+        let value = self.interpret_expr(initializer, Rc::clone(&environment))?;
 
         environment.borrow_mut().define(name, value);
       }
@@ -386,8 +428,11 @@ impl Interpret<()> for Stmt {
         condition,
         statement,
       } => {
-        while condition.interpret(Rc::clone(&environment))?.is_truthy() {
-          statement.interpret(Rc::clone(&environment))?;
+        while self
+          .interpret_expr(condition, Rc::clone(&environment))?
+          .is_truthy()
+        {
+          self.interpret_stmt(statement, Rc::clone(&environment))?;
         }
       }
       Stmt::If {
@@ -395,10 +440,13 @@ impl Interpret<()> for Stmt {
         true_case,
         false_case,
       } => {
-        if condition.interpret(Rc::clone(&environment))?.is_truthy() {
-          true_case.interpret(Rc::clone(&environment))?;
+        if self
+          .interpret_expr(condition, Rc::clone(&environment))?
+          .is_truthy()
+        {
+          self.interpret_stmt(true_case, Rc::clone(&environment))?;
         } else if let Some(statement) = false_case {
-          statement.interpret(Rc::clone(&environment))?;
+          self.interpret_stmt(statement, Rc::clone(&environment))?;
         }
       }
     };

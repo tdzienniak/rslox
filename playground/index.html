@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <script type="module">
+    const worker = new Worker('worker.js', {
+      type: 'module'
+    });
+
+    worker.addEventListener('message', (event) => {
+      console.log(event)
+    });
+
+    console.log(worker)
+
+    worker.postMessage('test')
+  </script>
+</head>
+<body>
+
+</body>
+</html>

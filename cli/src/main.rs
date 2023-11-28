@@ -1,11 +1,3 @@
-mod ast_printer;
-mod environment;
-mod errors;
-mod interpreter;
-mod parser;
-mod runner;
-mod scanner;
-
 use clap::{Parser, Subcommand};
 use std::process;
 
@@ -29,7 +21,7 @@ fn main() {
     Commands::Run { path } => {
       let contents = std::fs::read_to_string(path).expect("Something went wrong reading the file");
 
-      runner::run(contents).unwrap_or_else(|e| {
+      tree_walking::runner::run(contents).unwrap_or_else(|e| {
         eprintln!("Error: {e}");
         process::exit(1);
       })

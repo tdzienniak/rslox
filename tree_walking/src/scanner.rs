@@ -200,7 +200,7 @@ impl Scanner {
               "true" => TokenType::True,
               "false" => TokenType::False,
               "nil" => TokenType::Nil,
-              "napierdalaj" => TokenType::While,
+              "while" => TokenType::While,
               "for" => TokenType::For,
               "and" => TokenType::And,
               "or" => TokenType::Or,
