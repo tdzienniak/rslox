@@ -1,12 +1,14 @@
 use crate::interpreter::{Interpreter};
 use crate::parser::Parser;
-use crate::scanner::Scanner;
+use crate::scanner::{Scanner, Token};
 use anyhow::Result;
 use crate::resolver::Resolver;
 
 pub fn run(source: String) -> Result<()> {
   let scanner = Scanner::new(source);
-  let tokens = scanner.scan_tokens()?;
+
+  let tokens = scanner.collect::<Result<Vec<Token>>>()?;
+
   let mut parser = Parser::new(tokens);
 
   let statements = parser.parse()?;

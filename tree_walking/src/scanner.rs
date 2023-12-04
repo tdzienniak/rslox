@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum TokenType {
@@ -55,98 +55,132 @@ pub(crate) enum TokenType {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Token {
-  pub(crate) kind: TokenType,
-  pub(crate) lexeme: String,
-  pub(crate) line: u32,
+pub struct Token {
+  pub kind: TokenType,
+  pub lexeme: String,
+  pub line: u32,
 }
 
 pub(crate) struct Scanner {
   source: String,
   line: u32,
-  tokens: Vec<Token>,
+  index: usize,
+  was_eof_yielded: bool,
 }
 
 impl Scanner {
-  pub(crate) fn new(source: String) -> Scanner {
+  pub(crate) fn new(source: String) -> Self {
     Scanner {
-      source,
       line: 1,
-      tokens: vec![],
+      index: 0,
+      source,
+      was_eof_yielded: false,
     }
   }
 
-  fn add_token(&mut self, kind: TokenType, lexeme: String) {
-    self.tokens.push(Token {
+  fn add_token(&mut self, kind: TokenType, lexeme: String) -> Option<Result<Token>> {
+    Some(Ok(Token {
       kind,
       lexeme,
       line: self.line,
-    });
+    }))
   }
 
-  pub(crate) fn scan_tokens(mut self) -> Result<Vec<Token>> {
-    let cloned_source = self.source.clone();
-    let mut char_iter = cloned_source.chars().peekable();
+  fn slice(&self) -> &str {
+    &self.source[self.index..]
+  }
 
-    while let Some(char) = char_iter.next() {
+  fn peek_char(&self, nth: usize) -> Option<char> {
+    let slice = self.slice();
+
+    slice.chars().nth(nth)
+  }
+
+  fn next_char(&mut self) -> Option<char> {
+    // Slice of leftover characters
+    let slice = self.slice();
+
+    // Iterator over leftover characters
+    let mut chars = slice.chars();
+
+    // Query the next char
+    let next_char = chars.next()?;
+
+    // Compute the new index by looking at how many bytes are left
+    // after querying the next char
+    self.index = self.source.len() - chars.as_str().len();
+
+    // Return next char
+    Some(next_char)
+  }
+
+  pub fn next_char_if(&mut self, func: impl FnOnce(&char) -> bool) -> Option<char> {
+    match self.peek_char(0) {
+      Some(c) if func(&c) => self.next_char(),
+      _ => None
+    }
+  }
+
+  fn next_token(&mut self) -> Option<Result<Token>> {
+    while let Some(char) = self.next_char() {
       match char {
-        '(' => self.add_token(TokenType::LeftParen, char.to_string()),
-        ')' => self.add_token(TokenType::RightParen, char.to_string()),
-        '{' => self.add_token(TokenType::LeftBrace, char.to_string()),
-        '}' => self.add_token(TokenType::RightBrace, char.to_string()),
-        ',' => self.add_token(TokenType::Comma, char.to_string()),
-        '.' => self.add_token(TokenType::Dot, char.to_string()),
-        '-' => self.add_token(TokenType::Minus, char.to_string()),
-        '+' => self.add_token(TokenType::Plus, char.to_string()),
-        ';' => self.add_token(TokenType::Semicolon, char.to_string()),
-        '*' => self.add_token(TokenType::Star, char.to_string()),
-        '?' => self.add_token(TokenType::Question, char.to_string()),
-        ':' => self.add_token(TokenType::Colon, char.to_string()),
+        '(' => return  self.add_token(TokenType::LeftParen, char.to_string()),
+        ')' => return self.add_token(TokenType::RightParen, char.to_string()),
+        '{' => return self.add_token(TokenType::LeftBrace, char.to_string()),
+        '}' => return self.add_token(TokenType::RightBrace, char.to_string()),
+        ',' => return self.add_token(TokenType::Comma, char.to_string()),
+        '.' => return self.add_token(TokenType::Dot, char.to_string()),
+        '-' => return self.add_token(TokenType::Minus, char.to_string()),
+        '+' => return self.add_token(TokenType::Plus, char.to_string()),
+        ';' => return self.add_token(TokenType::Semicolon, char.to_string()),
+        '*' => return self.add_token(TokenType::Star, char.to_string()),
+        '?' => return self.add_token(TokenType::Question, char.to_string()),
+        ':' => return self.add_token(TokenType::Colon, char.to_string()),
         '!' => {
-          let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
-            char_iter.next();
+          let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
+            self.next_char();
             TokenType::BangEqual
           } else {
             TokenType::Bang
           };
 
-          self.add_token(type_, char.to_string());
+          return self.add_token(type_, char.to_string());
         }
         '=' => {
-          let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
-            char_iter.next();
+          let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
+           self.next_char();
             TokenType::EqualEqual
           } else {
             TokenType::Eqal
           };
 
-          self.add_token(type_, char.to_string());
+          return self.add_token(type_, char.to_string());
         }
         '<' => {
-          let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
-            char_iter.next();
+          let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
+           self.next_char();
             TokenType::LessEqual
           } else {
             TokenType::Less
           };
 
-          self.add_token(type_, char.to_string());
+          return self.add_token(type_, char.to_string());
         }
         '>' => {
-          let type_ = if char_iter.peek().is_some_and(|c| *c == '=') {
-            char_iter.next();
+          let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
+           self.next_char();
             TokenType::GreaterEqual
           } else {
             TokenType::Greater
           };
 
-          self.add_token(type_, char.to_string());
+          return self.add_token(type_, char.to_string());
         }
         '/' => {
-          if char_iter.peek().is_some_and(|c| *c == '/') {
-            while char_iter.next_if(|char| *char != '\n').is_some() {}
+          if self.peek_char(0).is_some_and(|c| c == '/') {
+            while self.next_char_if(|char| *char != '\n').is_some() {}
           } else {
-            self.add_token(TokenType::Slash, char.to_string());
+            return self.add_token(TokenType::Slash, char.to_string());
           }
         }
         ' ' | '\r' | '\t' => {}
@@ -154,43 +188,44 @@ impl Scanner {
         '"' => {
           let mut value = String::new();
 
-          while let Some(char) = char_iter.next_if(|c| *c != '"') {
+          while let Some(char) = self.next_char_if(|c| *c != '"') {
             value.push(char);
           }
 
           // consume the closing "
-          char_iter.next();
+          self.next_char();
 
-          self.add_token(TokenType::String(value.clone()), value);
+          return self.add_token(TokenType::String(value.clone()), value);
         }
         _ => {
           if char.is_ascii_digit() {
             let mut value = String::from(char);
 
-            while let Some(char) = char_iter.next_if(|c| c.is_ascii_digit()) {
+            while let Some(char) = self.next_char_if(|c| c.is_ascii_digit()) {
               value.push(char);
             }
 
-            if char_iter.peek().is_some_and(|c| *c == '.')
-              && char_iter
-                .clone()
-                .skip(1)
-                .peekable()
-                .peek()
-                .is_some_and(|c| c.is_ascii_control())
+            if self.peek_char(0).is_some_and(|c| c == '.')
+              && self.peek_char(1)
+                .is_some_and(|c| c.is_ascii_digit())
             {
-              value.push(char_iter.next().unwrap());
+              value.push(self.next_char().unwrap());
 
-              while let Some(char) = char_iter.next_if(|c| c.is_ascii_digit()) {
+              while let Some(char) = self.next_char_if(|c| c.is_ascii_digit()) {
                 value.push(char);
               }
             }
 
-            self.add_token(TokenType::Number(value.parse::<f64>()?), value.clone());
+            return if let Ok(parsed) = value.parse::<f64>() {
+              self.add_token(TokenType::Number(parsed), value.clone())
+            } else {
+              Some(Err(anyhow!("cannot parse string into number")))
+            }
+
           } else if char.is_alphabetic() {
             let mut value = String::from(char);
 
-            while let Some(char) = char_iter.next_if(|c| c.is_ascii_alphanumeric()) {
+            while let Some(char) = self.next_char_if(|c| c.is_ascii_alphanumeric()) {
               value.push(char);
             }
 
@@ -214,45 +249,25 @@ impl Scanner {
               _ => TokenType::Identifier(value.clone()),
             };
 
-            self.add_token(token_type, value);
+            return self.add_token(token_type, value);
           }
         }
       }
     }
 
-    self.add_token(TokenType::Eof, "".to_string());
-
-    Ok(self.tokens)
+    if self.was_eof_yielded {
+      None
+    } else {
+      self.was_eof_yielded = true;
+      self.add_token(TokenType::Eof, "".to_string())
+    }
   }
 }
 
-#[cfg(test)]
-mod tests {
-  use super::*;
+impl Iterator for Scanner {
+  type Item = Result<Token>;
 
-  #[test]
-  fn test_name() {
-    let tokens = Scanner::new("print \"Hello World!\"".to_string());
-
-    assert_eq!(
-      tokens.scan_tokens().unwrap(),
-      vec![
-        Token {
-          kind: TokenType::Print,
-          lexeme: "print".to_string(),
-          line: 1,
-        },
-        Token {
-          kind: TokenType::String("Hello World!".to_string()),
-          lexeme: "Hello World!".to_string(),
-          line: 1,
-        },
-        Token {
-          kind: TokenType::Eof,
-          lexeme: "".to_string(),
-          line: 1
-        },
-      ]
-    );
+  fn next(&mut self) -> Option<Self::Item> {
+    self.next_token()
   }
 }
