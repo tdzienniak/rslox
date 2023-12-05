@@ -117,14 +117,14 @@ impl Scanner {
   pub fn next_char_if(&mut self, func: impl FnOnce(&char) -> bool) -> Option<char> {
     match self.peek_char(0) {
       Some(c) if func(&c) => self.next_char(),
-      _ => None
+      _ => None,
     }
   }
 
   fn next_token(&mut self) -> Option<Result<Token>> {
     while let Some(char) = self.next_char() {
       match char {
-        '(' => return  self.add_token(TokenType::LeftParen, char.to_string()),
+        '(' => return self.add_token(TokenType::LeftParen, char.to_string()),
         ')' => return self.add_token(TokenType::RightParen, char.to_string()),
         '{' => return self.add_token(TokenType::LeftBrace, char.to_string()),
         '}' => return self.add_token(TokenType::RightBrace, char.to_string()),
@@ -148,7 +148,7 @@ impl Scanner {
         }
         '=' => {
           let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
-           self.next_char();
+            self.next_char();
             TokenType::EqualEqual
           } else {
             TokenType::Eqal
@@ -158,7 +158,7 @@ impl Scanner {
         }
         '<' => {
           let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
-           self.next_char();
+            self.next_char();
             TokenType::LessEqual
           } else {
             TokenType::Less
@@ -168,7 +168,7 @@ impl Scanner {
         }
         '>' => {
           let type_ = if self.peek_char(0).is_some_and(|c| c == '=') {
-           self.next_char();
+            self.next_char();
             TokenType::GreaterEqual
           } else {
             TokenType::Greater
@@ -206,8 +206,7 @@ impl Scanner {
             }
 
             if self.peek_char(0).is_some_and(|c| c == '.')
-              && self.peek_char(1)
-                .is_some_and(|c| c.is_ascii_digit())
+              && self.peek_char(1).is_some_and(|c| c.is_ascii_digit())
             {
               value.push(self.next_char().unwrap());
 
@@ -220,8 +219,7 @@ impl Scanner {
               self.add_token(TokenType::Number(parsed), value.clone())
             } else {
               Some(Err(anyhow!("cannot parse string into number")))
-            }
-
+            };
           } else if char.is_alphabetic() {
             let mut value = String::from(char);
 

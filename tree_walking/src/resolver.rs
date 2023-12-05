@@ -12,7 +12,10 @@ pub(crate) struct Resolver {
 impl Resolver {
   pub(crate) fn new() -> Self {
     Resolver {
-      scopes: vec![HashMap::from([("println".to_string(), true), ("clock".to_string(), true)]), HashMap::new()],
+      scopes: vec![
+        HashMap::from([("println".to_string(), true), ("clock".to_string(), true)]),
+        HashMap::new(),
+      ],
       locals: HashMap::new(),
     }
   }
@@ -65,7 +68,10 @@ impl Resolver {
         self.resolve_expr(expression);
         self.resolve_local(name, id);
       }
-      Expr::Call { arguments, function } => {
+      Expr::Call {
+        arguments,
+        function,
+      } => {
         self.resolve_expr(function);
 
         for arg in arguments {

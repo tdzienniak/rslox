@@ -43,7 +43,12 @@ impl Environment {
     self.values.insert(identifier.to_string(), value);
   }
 
-  pub(crate) fn assign(&mut self, identifier: &str, value: Rc<Value>, distance: usize) -> Rc<Value> {
+  pub(crate) fn assign(
+    &mut self,
+    identifier: &str,
+    value: Rc<Value>,
+    distance: usize,
+  ) -> Rc<Value> {
     self.execute_at_mut(distance, |env| {
       env.values.insert(identifier.to_string(), Rc::clone(&value));
 
@@ -52,9 +57,7 @@ impl Environment {
   }
 
   pub(crate) fn get(&self, identifier: &str, distance: usize) -> Option<Rc<Value>> {
-    self.execute_at(distance, |env| {
-      env.values.get(identifier).map(Rc::clone)
-    })
+    self.execute_at(distance, |env| env.values.get(identifier).map(Rc::clone))
   }
 }
 

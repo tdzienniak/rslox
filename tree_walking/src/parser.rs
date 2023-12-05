@@ -25,14 +25,15 @@
 // arguments     -> expression ("," expression)*
 // primary       -> IDENTIFIER | NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::errors::SyntaxError;
 use crate::scanner::{Token, TokenType};
 use anyhow::Result;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(1);
-fn get_id() -> usize { COUNTER.fetch_add(1, Ordering::Relaxed) }
-
+fn get_id() -> usize {
+  COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BinaryOperator {
@@ -92,7 +93,7 @@ pub(crate) enum Expr {
   Assignment {
     name: String,
     expression: Box<Expr>,
-    id: usize
+    id: usize,
   },
   Call {
     function: Box<Expr>,
@@ -391,7 +392,7 @@ impl Parser {
       let r_value = self.assignment()?;
 
       let Expr::Literal {
-        value: Literal::Identifier { name , .. },
+        value: Literal::Identifier { name, .. },
       } = l_value
       else {
         return Err(SyntaxError::LValueMustBeAnIdentifier.into());
@@ -400,7 +401,7 @@ impl Parser {
       Ok(Expr::Assignment {
         name,
         expression: Box::new(r_value),
-        id: get_id()
+        id: get_id(),
       })
     } else {
       Ok(l_value)
@@ -596,7 +597,10 @@ impl Parser {
       TokenType::True => create_primary_expr!(Literal::True),
       TokenType::False => create_primary_expr!(Literal::False),
       TokenType::Nil => create_primary_expr!(Literal::Nil),
-      TokenType::Identifier(value) => create_primary_expr!(Literal::Identifier { name: value, id: get_id() }),
+      TokenType::Identifier(value) => create_primary_expr!(Literal::Identifier {
+        name: value,
+        id: get_id()
+      }),
       TokenType::LeftParen => {
         self.advance();
 

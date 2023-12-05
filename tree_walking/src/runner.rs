@@ -1,8 +1,8 @@
-use crate::interpreter::{Interpreter};
+use crate::interpreter::Interpreter;
 use crate::parser::Parser;
+use crate::resolver::Resolver;
 use crate::scanner::{Scanner, Token};
 use anyhow::Result;
-use crate::resolver::Resolver;
 
 pub fn run(source: String) -> Result<()> {
   let scanner = Scanner::new(source);
