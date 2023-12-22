@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.4.6", features = ["derive"] }
 tree_walking = { path = "../tree_walking" }
+vm ={ path = "../vm" }

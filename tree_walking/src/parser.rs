@@ -26,8 +26,8 @@
 // primary       -> IDENTIFIER | NUMBER | STRING | "true" | "false" | "nil" | "(" expression ")" ;
 
 use crate::errors::SyntaxError;
-use crate::scanner::{Token, TokenType};
 use anyhow::Result;
+use scanner::{Token, TokenType};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -175,7 +175,7 @@ impl Parser {
 
     stmt.map(Some).or_else(|e| {
       if let Some(syntax_error) = e.downcast_ref::<SyntaxError>() {
-        self.errors.push(syntax_error.clone());
+        self.report_error(syntax_error.to_owned());
         self.synchronize();
 
         Ok(None)
@@ -336,14 +336,6 @@ impl Parser {
       }),
       false_case: else_case.map(Box::new),
     })
-  }
-
-  fn consume(&mut self, token: TokenType, err: SyntaxError) -> Result<()> {
-    if !self.match_(token) {
-      Err(err.into())
-    } else {
-      Ok(())
-    }
   }
 
   fn expr_stmt(&mut self) -> Result<Stmt> {
@@ -649,6 +641,14 @@ impl Parser {
     self.consume(TokenType::RightParen, SyntaxError::MissingRightParen)?;
 
     Ok(arguments)
+  }
+
+  fn consume(&mut self, token: TokenType, err: SyntaxError) -> Result<()> {
+    if !self.match_(token) {
+      Err(err.into())
+    } else {
+      Ok(())
+    }
   }
 
   fn advance(&mut self) -> &Token {

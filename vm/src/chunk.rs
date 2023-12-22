@@ -6,20 +6,21 @@ pub(crate) enum Opcode {
   Constant { index: usize },
   Negate,
   Add,
+  Multiply,
   // Subtract,
-  // Multiply,
-  // Devide
+  // Divide
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub(crate) enum Value {
   Number(f64),
+  String(String)
 }
 
 pub(crate) struct Chunk {
   constants: Vec<Value>,
   pub(crate) code: Vec<Opcode>,
-  lines: Vec<u16>,
+  lines: Vec<u32>,
 }
 
 impl Chunk {
@@ -31,7 +32,7 @@ impl Chunk {
     }
   }
 
-  pub(crate) fn push_constant(&mut self, value: Value, line: u16) {
+  pub(crate) fn push_constant(&mut self, value: Value, line: u32) {
     self.constants.push(value);
 
     let constant_index = self.constants.len() - 1;
@@ -44,11 +45,11 @@ impl Chunk {
     );
   }
 
-  pub(crate) fn get_constant(&self, index: usize) -> Value {
-    self.constants[index]
+  pub(crate) fn get_constant(&self, index: usize) -> &Value {
+    &self.constants[index]
   }
 
-  pub(crate) fn push_code(&mut self, code: Opcode, line: u16) {
+  pub(crate) fn push_code(&mut self, code: Opcode, line: u32) {
     self.code.push(code);
     self.lines.push(line);
   }
@@ -86,6 +87,9 @@ impl fmt::Display for Chunk {
           }
           Opcode::Add => {
             write!(&mut buf, " {: <15}", "ADD").unwrap();
+          }
+          Opcode::Multiply => {
+            write!(&mut buf, " {: <15}", "MULT").unwrap();
           }
           Opcode::Negate => {
             write!(&mut buf, " {: <15}", "NEGATE").unwrap();

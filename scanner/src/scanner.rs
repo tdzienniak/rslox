@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) enum TokenType {
+pub enum TokenType {
   // Single-character tokens
   LeftParen,
   RightParen,
@@ -61,7 +61,7 @@ pub struct Token {
   pub line: u32,
 }
 
-pub(crate) struct Scanner {
+pub struct Scanner {
   source: String,
   line: u32,
   index: usize,
@@ -69,7 +69,7 @@ pub(crate) struct Scanner {
 }
 
 impl Scanner {
-  pub(crate) fn new(source: String) -> Self {
+  pub fn new(source: String) -> Self {
     Scanner {
       line: 1,
       index: 0,

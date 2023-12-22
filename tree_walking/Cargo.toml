@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 thiserror = "1.0.50"
 anyhow = "1.0.42"
+scanner = { path = "../scanner" }

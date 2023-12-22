@@ -1,20 +1,20 @@
 use crate::chunk::{Chunk, Opcode, Value};
 use anyhow::{anyhow, Context, Result};
 
-struct VM {
+pub(crate) struct VM {
   chunk: Chunk,
   stack: Vec<Value>,
 }
 
 impl VM {
-  fn new(chunk: Chunk) -> Self {
+  pub(crate) fn new(chunk: Chunk) -> Self {
     VM {
       stack: vec![],
       chunk,
     }
   }
 
-  fn interpret(&mut self) -> Result<()> {
+  pub(crate) fn interpret(&mut self) -> Result<()> {
     // TODO: make `Chunk` an iterator
     for (index, opcode) in self.chunk.code.iter().enumerate() {
       match opcode {
@@ -24,7 +24,7 @@ impl VM {
         Opcode::Constant {
           index: constant_index,
         } => {
-          self.stack.push(self.chunk.get_constant(*constant_index));
+          self.stack.push(self.chunk.get_constant(*constant_index).clone());
         }
         Opcode::Negate => {
           let value = self.stack.last_mut().unwrap();
@@ -35,7 +35,7 @@ impl VM {
             return Err(anyhow!("only numbers can be negated"));
           }
         }
-        Opcode::Add => {
+        Opcode::Add | Opcode::Multiply => {
           let Value::Number(b) = self.stack.pop().context("empty stack")? else {
             return Err(anyhow!("expected a number"));
           };
@@ -43,10 +43,18 @@ impl VM {
             return Err(anyhow!("expected a number"));
           };
 
-          self.stack.push(Value::Number(a + b));
+          let result = match opcode {
+            Opcode::Add => a + b,
+            Opcode::Multiply => a * b,
+            _ => panic!("Will not happen.")
+          };
+
+          self.stack.push(Value::Number(result));
         }
       }
     }
+
+    println!("Result: {:?}", self.stack);
 
     Ok(())
   }

@@ -5,4 +5,3 @@ mod interpreter;
 mod parser;
 mod resolver;
 pub mod runner;
-mod scanner;
