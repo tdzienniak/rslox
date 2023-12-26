@@ -1,20 +1,51 @@
 use std::fmt;
-use std::fmt::Write;
+use std::fmt::{Write, Display};
 
+#[derive(Clone)]
 pub(crate) enum Opcode {
   Return,
   Constant { index: usize },
+  Not,
+  True,
+  False,
+  Nil,
+  Equal,
+  Greater,
+  Less,
   Negate,
   Add,
   Multiply,
-  // Subtract,
-  // Divide
+  Subtract,
+  Divide
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum Value {
   Number(f64),
-  String(String)
+  String(String),
+  Bool(bool),
+  Nil
+}
+
+impl Display for Value {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "{}", match self {
+      Value::Number(v) => v.to_string(),
+      Value::String(v) => v.to_string(),
+      Value::Nil => "nil".to_string(),
+      Value::Bool(v) => v.to_string()
+    })
+  }
+}
+
+impl Value {
+  pub(crate) fn is_truthy(&self) -> bool {
+    match self {
+      Value::Nil => false,
+      Value::Bool(v) => *v,
+      _ => true,
+    }
+  }
 }
 
 pub(crate) struct Chunk {
@@ -90,9 +121,36 @@ impl fmt::Display for Chunk {
           }
           Opcode::Multiply => {
             write!(&mut buf, " {: <15}", "MULT").unwrap();
-          }
+          },
+          Opcode::Subtract => {
+            write!(&mut buf, " {: <15}", "SUB").unwrap();
+          },
+          Opcode::Divide => {
+            write!(&mut buf, " {: <15}", "DIV").unwrap();
+          },
           Opcode::Negate => {
             write!(&mut buf, " {: <15}", "NEGATE").unwrap();
+          },
+          Opcode::Not => {
+            write!(&mut buf, " {: <15}", "NOT").unwrap();
+          },
+          Opcode::True => {
+            write!(&mut buf, " {: <15}", "TRUE").unwrap();
+          },
+          Opcode::False => {
+            write!(&mut buf, " {: <15}", "FALSE").unwrap();
+          },
+          Opcode::Nil => {
+            write!(&mut buf, " {: <15}", "NIL").unwrap();
+          },
+          Opcode::Equal => {
+            write!(&mut buf, " {: <15}", "EQUAL").unwrap();
+          },
+          Opcode::Less => {
+            write!(&mut buf, " {: <15}", "LESS").unwrap();
+          },
+          Opcode::Greater => {
+            write!(&mut buf, " {: <15}", "GREATER").unwrap();
           }
         };
 

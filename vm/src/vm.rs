@@ -15,8 +15,14 @@ impl VM {
   }
 
   pub(crate) fn interpret(&mut self) -> Result<()> {
+    macro_rules! pop_stack {
+        () => {
+          self.stack.pop().context("empty stack")?
+        };
+    }
+
     // TODO: make `Chunk` an iterator
-    for (index, opcode) in self.chunk.code.iter().enumerate() {
+    for opcode in self.chunk.code.iter() {
       match opcode {
         Opcode::Return => {
           println!("{:?}", self.stack.pop());
@@ -35,22 +41,64 @@ impl VM {
             return Err(anyhow!("only numbers can be negated"));
           }
         }
-        Opcode::Add | Opcode::Multiply => {
-          let Value::Number(b) = self.stack.pop().context("empty stack")? else {
+        Opcode::Multiply | Opcode::Subtract | Opcode::Divide | Opcode::Less | Opcode::Greater => {
+          let Value::Number(b) = pop_stack!() else {
             return Err(anyhow!("expected a number"));
           };
-          let Value::Number(a) = self.stack.pop().context("empty stack")? else {
+          let Value::Number(a) = pop_stack!() else {
             return Err(anyhow!("expected a number"));
           };
 
           let result = match opcode {
-            Opcode::Add => a + b,
-            Opcode::Multiply => a * b,
+            Opcode::Subtract => Value::Number(a - b),
+            Opcode::Multiply => Value::Number(a * b),
+            Opcode::Divide => Value::Number(a / b),
+            Opcode::Less => Value::Bool(a < b),
+            Opcode::Greater => Value::Bool(a > b),
             _ => panic!("Will not happen.")
           };
 
-          self.stack.push(Value::Number(result));
-        }
+          self.stack.push(result);
+        },
+        Opcode::Add => {
+          let b = pop_stack!();
+          let a = pop_stack!();
+
+          self.stack.push(if let Value::String(_) = a {
+            Value::String(format!("{}{}", a, b))
+          } else if let Value::String(_) = b {
+            Value::String(format!("{}{}", a, b))
+          } else {
+            let Value::Number(b) = b else {
+              return Err(anyhow!("expected a number"));
+            };
+            let Value::Number(a) = a else {
+              return Err(anyhow!("expected a number"));
+            };
+
+            Value::Number(a + b)
+          });
+        },
+        Opcode::Equal => {
+          let a = pop_stack!();
+          let b = pop_stack!();
+
+          self.stack.push(Value::Bool(a.is_truthy() == b.is_truthy()));
+        },
+        Opcode::Not => {
+          let v = pop_stack!().is_truthy();
+
+          self.stack.push(Value::Bool(!v));
+        },
+        Opcode::True => {
+          self.stack.push(Value::Bool(true));
+        },
+        Opcode::False => {
+          self.stack.push(Value::Bool(false));
+        },
+        Opcode::Nil => {
+          self.stack.push(Value::Nil);
+        },
       }
     }
 
@@ -76,6 +124,6 @@ mod tests {
 
     let mut vm = VM::new(chunk);
 
-    vm.interpret();
+    vm.interpret().unwrap();
   }
 }
