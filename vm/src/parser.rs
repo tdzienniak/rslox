@@ -2,7 +2,7 @@ use anyhow::Result;
 use scanner::{Scanner, Token, TokenType};
 use thiserror::Error;
 
-use crate::chunk::{Chunk, Value, Opcode};
+use crate::chunk::{Chunk, Opcode, Value};
 
 #[derive(Error, Debug, Clone)]
 pub(crate) enum SyntaxError {
@@ -11,7 +11,7 @@ pub(crate) enum SyntaxError {
 }
 
 const NONE_PREC: u16 = 0;
-const ASSIGNMENT_PREC: u16 = NONE_PREC  + 1;
+const ASSIGNMENT_PREC: u16 = NONE_PREC + 1;
 const EQUALITY_PREC: u16 = ASSIGNMENT_PREC + 1;
 const TERM_PREC: u16 = EQUALITY_PREC + 1;
 const FACTOR_PREC: u16 = TERM_PREC + 1;
@@ -22,7 +22,7 @@ pub(crate) struct Parser {
   previous: Option<Token>,
   current: Option<Token>,
   errors: Vec<SyntaxError>,
-  chunk: Chunk
+  chunk: Chunk,
 }
 
 impl Parser {
@@ -32,7 +32,7 @@ impl Parser {
       current: None,
       previous: None,
       errors: vec![],
-      chunk: Chunk::new()
+      chunk: Chunk::new(),
     }
   }
 
@@ -68,27 +68,29 @@ impl Parser {
     match &token.kind {
       TokenType::Number(value) => {
         self.chunk.push_constant(Value::Number(*value), token.line);
-      },
+      }
       TokenType::String(value) => {
-        self.chunk.push_constant(Value::String(value.clone()), token.line);
-      },
+        self
+          .chunk
+          .push_constant(Value::String(value.clone()), token.line);
+      }
       TokenType::True => {
         self.chunk.push_code(Opcode::True, token.line);
-      },
+      }
       TokenType::False => {
         self.chunk.push_code(Opcode::False, token.line);
-      },
+      }
       TokenType::Nil => {
         self.chunk.push_code(Opcode::Nil, token.line);
       }
       TokenType::Minus => {
         self.parse_unary()?;
-      },
+      }
       TokenType::LeftParen => {
         self.expression()?;
         self.consume(TokenType::RightParen, SyntaxError::MissingSemicolon)?;
-      },
-      _ => panic!("Unexpected token for prefix: {:?}", token)
+      }
+      _ => panic!("Unexpected token for prefix: {:?}", token),
     };
 
     Ok(())
@@ -98,54 +100,46 @@ impl Parser {
     let operator_token = self.previous().clone();
 
     match operator_token.kind {
-      TokenType::Plus |
-      TokenType::Star |
-      TokenType::Slash |
-      TokenType::BangEqual |
-      TokenType::EqualEqual |
-      TokenType::LessEqual |
-      TokenType::GreaterEqual |
-      TokenType::Less |
-      TokenType::Greater => {
+      TokenType::Plus
+      | TokenType::Star
+      | TokenType::Slash
+      | TokenType::BangEqual
+      | TokenType::EqualEqual
+      | TokenType::LessEqual
+      | TokenType::GreaterEqual
+      | TokenType::Less
+      | TokenType::Greater => {
         // parse right
         // TODO: support left and right associativity
         self.parse_precedence(self.get_precedence(&operator_token.kind) + 1)?;
 
         match operator_token.kind {
-          TokenType::Plus => {
-            self.chunk.push_code(Opcode::Add, operator_token.line)
-          },
-          TokenType::Minus => {
-            self.chunk.push_code(Opcode::Subtract, operator_token.line)
-          },
-          TokenType::Star => {
-            self.chunk.push_code(Opcode::Multiply, operator_token.line)
-          },
-          TokenType::Slash => {
-            self.chunk.push_code(Opcode::Divide, operator_token.line)
-          },
+          TokenType::Plus => self.chunk.push_code(Opcode::Add, operator_token.line),
+          TokenType::Minus => self.chunk.push_code(Opcode::Subtract, operator_token.line),
+          TokenType::Star => self.chunk.push_code(Opcode::Multiply, operator_token.line),
+          TokenType::Slash => self.chunk.push_code(Opcode::Divide, operator_token.line),
           TokenType::BangEqual => {
             self.chunk.push_code(Opcode::Equal, operator_token.line);
             self.chunk.push_code(Opcode::Not, operator_token.line);
-          },
+          }
           TokenType::EqualEqual => {
             self.chunk.push_code(Opcode::Equal, operator_token.line);
-          },
+          }
           TokenType::LessEqual => {
             self.chunk.push_code(Opcode::Greater, operator_token.line);
             self.chunk.push_code(Opcode::Not, operator_token.line);
-          },
+          }
           TokenType::GreaterEqual => {
             self.chunk.push_code(Opcode::Less, operator_token.line);
             self.chunk.push_code(Opcode::Not, operator_token.line);
-          },
+          }
           TokenType::Less => {
             self.chunk.push_code(Opcode::Less, operator_token.line);
-          },
+          }
           TokenType::Greater => {
             self.chunk.push_code(Opcode::Greater, operator_token.line);
           }
-          _ => panic!("This will not happen, but compiler needs to be happpy.")
+          _ => panic!("This will not happen, but compiler needs to be happpy."),
         }
       }
       _ => panic!("Unexpected token for infix operator"),
@@ -181,9 +175,7 @@ impl Parser {
       TokenType::Bang => {
         println!("PREFIX BANG")
       }
-      TokenType::Minus => {
-        self.chunk.push_code(Opcode::Negate, operator_token.line)
-      }
+      TokenType::Minus => self.chunk.push_code(Opcode::Negate, operator_token.line),
       _ => {
         panic!("Token {:?} is not a prefix operator.", operator_token);
       }
@@ -191,7 +183,7 @@ impl Parser {
 
     Ok(())
   }
-  
+
   fn consume(&mut self, token_type: TokenType, err: SyntaxError) -> Result<()> {
     if self.current().kind == token_type {
       self.advance()
@@ -199,7 +191,7 @@ impl Parser {
       Err(err.into())
     }
   }
-  
+
   fn advance(&mut self) -> Result<()> {
     std::mem::swap(&mut self.previous, &mut self.current);
 

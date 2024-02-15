@@ -1,7 +1,7 @@
 use crate::parser::Parser;
+use crate::vm::VM;
 use anyhow::Result;
 use scanner::Scanner;
-use crate::vm::VM;
 
 pub fn run(source: String) -> Result<()> {
   let scanner = Scanner::new(source);

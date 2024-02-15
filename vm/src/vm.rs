@@ -16,9 +16,9 @@ impl VM {
 
   pub(crate) fn interpret(&mut self) -> Result<()> {
     macro_rules! pop_stack {
-        () => {
-          self.stack.pop().context("empty stack")?
-        };
+      () => {
+        self.stack.pop().context("empty stack")?
+      };
     }
 
     // TODO: make `Chunk` an iterator
@@ -30,7 +30,9 @@ impl VM {
         Opcode::Constant {
           index: constant_index,
         } => {
-          self.stack.push(self.chunk.get_constant(*constant_index).clone());
+          self
+            .stack
+            .push(self.chunk.get_constant(*constant_index).clone());
         }
         Opcode::Negate => {
           let value = self.stack.last_mut().unwrap();
@@ -55,50 +57,50 @@ impl VM {
             Opcode::Divide => Value::Number(a / b),
             Opcode::Less => Value::Bool(a < b),
             Opcode::Greater => Value::Bool(a > b),
-            _ => panic!("Will not happen.")
+            _ => panic!("Will not happen."),
           };
 
           self.stack.push(result);
-        },
+        }
         Opcode::Add => {
           let b = pop_stack!();
           let a = pop_stack!();
 
-          self.stack.push(if let Value::String(_) = a {
-            Value::String(format!("{}{}", a, b))
-          } else if let Value::String(_) = b {
-            Value::String(format!("{}{}", a, b))
-          } else {
-            let Value::Number(b) = b else {
-              return Err(anyhow!("expected a number"));
-            };
-            let Value::Number(a) = a else {
-              return Err(anyhow!("expected a number"));
-            };
+          self.stack.push(
+            if matches!(a, Value::String(_)) || matches!(b, Value::String(_)) {
+              Value::String(format!("{}{}", a, b))
+            } else {
+              let Value::Number(b) = b else {
+                return Err(anyhow!("expected a number"));
+              };
+              let Value::Number(a) = a else {
+                return Err(anyhow!("expected a number"));
+              };
 
-            Value::Number(a + b)
-          });
-        },
+              Value::Number(a + b)
+            },
+          );
+        }
         Opcode::Equal => {
           let a = pop_stack!();
           let b = pop_stack!();
 
           self.stack.push(Value::Bool(a.is_truthy() == b.is_truthy()));
-        },
+        }
         Opcode::Not => {
           let v = pop_stack!().is_truthy();
 
           self.stack.push(Value::Bool(!v));
-        },
+        }
         Opcode::True => {
           self.stack.push(Value::Bool(true));
-        },
+        }
         Opcode::False => {
           self.stack.push(Value::Bool(false));
-        },
+        }
         Opcode::Nil => {
           self.stack.push(Value::Nil);
-        },
+        }
       }
     }
 

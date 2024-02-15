@@ -6,7 +6,7 @@ enum Interpreter {
   /// Use tree-walking interpreter
   TreeWalking,
   /// Use bytecode interpreter
-  VM
+  VM,
 }
 
 #[derive(Parser)]
@@ -25,7 +25,7 @@ enum Commands {
 
     /// Select an interpreter that should be used to run the code
     #[arg(short, long, value_enum, default_value_t = Interpreter::TreeWalking)]
-    runner: Interpreter
+    runner: Interpreter,
   },
 }
 

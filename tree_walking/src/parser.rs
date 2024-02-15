@@ -708,14 +708,15 @@ impl Parser {
 
 #[cfg(test)]
 mod tests {
-  use crate::{ast_printer::Printer, scanner::Scanner};
+  use scanner::Scanner;
+  use crate::ast_printer::Printer;
 
   use super::*;
 
   #[test]
   fn test_name() {
     let scaner = Scanner::new("test()(1, 2);".to_string());
-    let mut parser = Parser::new(scaner.scan_tokens().unwrap());
+    let mut parser = Parser::new(scaner.collect::<Result<Vec<Token>>>().unwrap());
 
     let ast = parser.parse().unwrap();
 
